@@ -81,6 +81,11 @@ export async function initAudioEngine() {
  */
 export function evaluateCode(codeStr: string) {
   try {
+    // ASEGURAR GLOBALS JUSTO ANTES DE EVALUAR
+    console.log("Verificando función mini:", mini);
+    window.mini = mini;
+    window.m = mini;
+
     // 1. Transpilar con robustez
     const transpiled = transpiler(codeStr, { 
       wrapAsync: false, 
