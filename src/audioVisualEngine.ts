@@ -9,6 +9,10 @@ import { initAudioOnFirstClick, getAudioContext } from '@strudel/webaudio';
 import Hydra from 'hydra-synth';
 import Meyda from 'meyda';
 
+// Variable global para evitar reinicializaciones
+let hydraInstance = null;
+let isAudioInitialized = false;
+
 /**
  * Inicializa Hydra de fondo sin capturar micrófono.
  */
