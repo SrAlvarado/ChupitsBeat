@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama3-70b-8192", // Modelo rápido y potente gratuito
+        model: "llama-3.3-70b-versatile", // Modelo actual y soportado por Groq
         messages: [
           { role: "system", content: systemInstruction },
           { role: "user", content: `Directriz del DJ (Vibe/Estilo): ${prompt}` }
