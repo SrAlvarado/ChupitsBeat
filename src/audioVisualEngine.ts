@@ -62,7 +62,12 @@ export async function initAudioEngine() {
     };
   }
 
-  window.hush = () => replInstance.stop();
+  // Exponer controles del scheduler globalmente para que el código de la IA los use
+  window.setCps = (cps) => replInstance.setCps(cps);
+  window.setcps = window.setCps;
+  window.setCpm = (cpm) => replInstance.setCps(cpm / 60);
+  window.setcpm = window.setCpm;
+  window.hush   = () => replInstance.stop();
 
   isAudioInitialized = true;
   console.log("Motor de audio listo. Samples cargados: bd, sd, hh, 808, TR-909...");
