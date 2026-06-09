@@ -1,9 +1,13 @@
-name: Deploy to Supabase
+name: Deploy to GitHub Pages & Supabase
 
 on:
   push:
     branches:
       - main
+
+# Otorga permisos para que el bot pueda publicar en la rama gh-pages
+permissions:
+  contents: write
 
 jobs:
   build-and-deploy:
@@ -24,11 +28,11 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Deploy to Supabase Storage
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node deploy.js
+      - name: Deploy Frontend to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
 
       - name: Deploy Supabase Edge Functions
         uses: supabase/setup-cli@v1

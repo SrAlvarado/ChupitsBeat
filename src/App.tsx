@@ -55,8 +55,8 @@ function App() {
   const handleAiPrompt = async (promptText: string) => {
     if (!isRunning || !promptText.trim()) return;
     
-    // Asumimos un endpoint local por ahora para pruebas, o se puede usar variables de entorno para prod.
-    const FUNCTION_URL = import.meta.env.VITE_SUPABASE_FUNCTION_URL || 'http://127.0.0.1:54321/functions/v1/chupits-ai';
+    // Apuntamos directamente a la Edge Function de producción en Supabase
+    const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
     
     try {
       // Limpiar el código actual para que la IA escriba desde cero o reemplace
