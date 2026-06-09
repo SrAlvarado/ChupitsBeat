@@ -6,12 +6,11 @@ import { initAudioOnFirstClick, getAudioContext } from '@strudel/webaudio';
 import Hydra from 'hydra-synth';
 import Meyda from 'meyda';
 
-// Variable global para evitar reinicializaciones
 let hydraInstance = null;
 let isAudioInitialized = false;
 
 /**
- * Inicializa Hydra de fondo sin capturar micrófono.
+ * Inicializa Hydra y prepara el entorno global.
  */
 export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   if (hydraInstance) return;
@@ -27,103 +26,80 @@ export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   
   window.solid(0, 0, 0).out();
   
-  // EXPOSICIÓN GLOBAL MASIVA PARA EVITAR FUTUROS REFERENCEERRORS
-  // 1. Funciones de Strudel Core
+  // Exponer TODO de strudel-core globalmente
   Object.keys(strudelCore).forEach(key => {
     window[key] = strudelCore[key];
   });
 
-  // 2. Alias críticos para el transpiler
+  // Alias vitales
   window.m = mini;
   window.mini = mini;
 
-  // 3. Fallback preventivo: si el transpiler genera algo que no tenemos, 
-  // que al menos no rompa la ejecución.
-  if (typeof window.samples === 'undefined') window.samples = () => ({});
-
-  console.log("Motores y globals cargados (Strudel + Hydra).");
+  console.log("Motores listos.");
 }
 
-/**
- * Inicializa Strudel WebAudio context y enlaza la salida principal hacia Hydra/Meyda.
- */
 export async function initAudioEngine() {
   if (isAudioInitialized) return;
-
   await initAudioOnFirstClick();
   const ctx = getAudioContext();
-  
-  if (!ctx) {
-    throw new Error("No se pudo obtener el AudioContext.");
+  if (window.a && window.a.setSource && ctx) {
+    const node = ctx.createGain();
+    node.connect(ctx.destination);
+    window.a.setSource(node);
   }
-
-  if (window.a && window.a.setSource) {
-    try {
-      // Usamos un GainNode intermedio para Meyda
-      const meydaAnalyzerNode = ctx.createGain();
-      meydaAnalyzerNode.connect(ctx.destination);
-      
-      window.a.setSource(meydaAnalyzerNode); 
-      window.a.setBins(4);
-      window.a.setSmooth(0.8);
-      window.a.setCutoff(0.1);
-      console.log("Reactividad de audio activada.");
-    } catch (err) {
-      console.warn("Fallo en enlace Meyda:", err);
-    }
-  }
-
   isAudioInitialized = true;
 }
 
 /**
- * Transpila y evalúa código en el ecosistema Strudel + Hydra.
+ * EVALUADOR DE EMERGENCIA (Bypass del Transpiler problemático)
  */
 export function evaluateCode(codeStr: string) {
   try {
-    // ASEGURAR GLOBALS JUSTO ANTES DE EVALUAR
-    console.log("Verificando función mini:", mini);
-    window.mini = mini;
-    window.m = mini;
-
-    // 1. Transpilar con robustez
-    const transpiled = transpiler(codeStr, { 
-      wrapAsync: false, 
-      addReturn: false,
-      emitMiniLocations: false 
-    });
+    console.log("Evaluando sesión...");
     
-    let codeToEval = '';
-    if (typeof transpiled === 'string') {
-      codeToEval = transpiled;
-    } else if (transpiled && typeof transpiled.output === 'string') {
-      codeToEval = transpiled.output;
-    } else if (transpiled && typeof transpiled.code === 'string') {
-      codeToEval = transpiled.code;
-    } else {
-      codeToEval = String(transpiled);
+    // 1. Limpiamos el código de posibles bloques de Markdown que la IA a veces mete
+    let cleanCode = codeStr.replace(/```javascript/g, '').replace(/```/g, '').trim();
+
+    // 2. Intentamos transpilación normal
+    let codeToRun = "";
+    try {
+      const transpiled = transpiler(cleanCode, { wrapAsync: false, addReturn: false });
+      codeToRun = typeof transpiled === 'string' ? transpiled : (transpiled.output || transpiled.code || cleanCode);
+    } catch (e) {
+      console.warn("Transpiler falló, usando código plano.");
+      codeToRun = cleanCode;
     }
 
-    if (!codeToEval || codeToEval === '[object Object]') {
-      console.error("Error: Código no válido tras transpilación.");
-      return;
-    }
+    // 3. PARCHE CRÍTICO: Si el código transpilado usa 'm(' pero 'm' no es detectada como función global
+    // la inyectamos a la fuerza en el momento de la ejecución.
+    const executionWrapper = `
+      (function() {
+        const m = window.m || window.mini;
+        const note = window.note;
+        const s = window.s;
+        const stack = window.stack;
+        const osc = window.osc;
+        
+        try {
+          ${codeToRun}
+        } catch (err) {
+          console.error("Error dentro del ejecutor:", err);
+        }
+      })();
+    `;
 
-    // 2. EVALUACIÓN INDIRECTA GLOBAL
-    // Esto asegura que 'm', 'osc', 'stack', etc. se busquen en 'window'
-    const globalEval = eval;
-    globalEval(codeToEval);
+    // Ejecución
+    const script = document.createElement('script');
+    script.textContent = executionWrapper;
+    document.body.appendChild(script);
+    document.body.removeChild(script);
 
-    console.log("Sesión actualizada.");
-    
+    console.log("Código ejecutado.");
   } catch (err) {
-    console.error("Error de ejecución:", err);
+    console.error("Error fatal en evaluación:", err);
   }
 }
 
-/**
- * Detiene los motores.
- */
 export function stopEngines() {
   if (window.hush) window.hush();
   if (window.hydra) window.solid(0, 0, 0).out();
