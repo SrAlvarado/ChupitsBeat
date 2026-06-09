@@ -58,9 +58,18 @@ export function evaluateCode(codeStr: string) {
     console.log("Evaluando sesión...");
     
     // 1. Limpiamos el código de posibles bloques de Markdown que la IA a veces mete
-    let cleanCode = codeStr.replace(/```javascript/g, '').replace(/```/g, '').trim();
+    let cleanCode = codeStr.replace(/```javascript/g, '').replace(/```js/g, '').replace(/```/g, '').trim();
 
-    // 2. Intentamos transpilación normal
+    // 2. Sanitizamos métodos de Strudel que la IA puede alucinar pero no existen
+    // .f("lpf", N) → .lpf(N) | .f("hpf", N) → .hpf(N) | .f("bpf", N) → .bpf(N)
+    cleanCode = cleanCode.replace(/\.f\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
+    cleanCode = cleanCode.replace(/\.f\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
+    cleanCode = cleanCode.replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)');
+    // .filter("lpf", N) → .lpf(N)
+    cleanCode = cleanCode.replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
+    cleanCode = cleanCode.replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
+
+    // 3. Intentamos transpilación normal
     let codeToRun = "";
     try {
       const transpiled = transpiler(cleanCode, { wrapAsync: false, addReturn: false });
@@ -70,7 +79,7 @@ export function evaluateCode(codeStr: string) {
       codeToRun = cleanCode;
     }
 
-    // 3. PARCHE CRÍTICO: Si el código transpilado usa 'm(' pero 'm' no es detectada como función global
+    // 4. PARCHE CRÍTICO: Si el código transpilado usa 'm(' pero 'm' no es detectada como función global
     // la inyectamos a la fuerza en el momento de la ejecución.
     const executionWrapper = `
       (function() {
