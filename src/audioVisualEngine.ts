@@ -7,6 +7,8 @@ import { registerSynthSounds, registerZZFXSounds, samples } from 'superdough';
 import Hydra from 'hydra-synth';
 
 const DS = 'https://raw.githubusercontent.com/felixroos/dough-samples/main';
+// EmuSP12.json tiene los nombres cortos: bd, sd, hh, oh, cp, cr, rd, rim, perc
+// tidal-drum-machines.json tiene nombres compuestos: RolandTR909_bd, etc.
 
 let hydraInstance = null;
 let isAudioInitialized = false;
@@ -43,10 +45,12 @@ export async function initAudioEngine() {
 
   // Registrar sintetizadores built-in y cargar sample banks de batería
   await Promise.all([
-    registerSynthSounds(),   // sawtooth, square, triangle, sine
-    registerZZFXSounds(),    // sonidos zzfx extra
-    samples(`${DS}/Dirt-Samples.json`),          // bd, sd, hh, cp, cr, rd, 808...
-    samples(`${DS}/tidal-drum-machines.json`),   // Roland TR-909, 808, 606...
+    registerSynthSounds(),
+    registerZZFXSounds(),
+    // EmuSP12 tiene nombres cortos: bd, sd, hh, oh, cp, cr, rd, rim, perc
+    samples(`${DS}/EmuSP12.json`).catch(e => console.warn('[samples] EmuSP12 falló:', e)),
+    // Drum machines con nombres compuestos (RolandTR909_bd, etc.)
+    samples(`${DS}/tidal-drum-machines.json`).catch(e => console.warn('[samples] drum-machines falló:', e)),
   ]);
 
   // Crear el REPL de Strudel (no arrancar aún — necesita patrón primero)
@@ -77,11 +81,13 @@ export function evaluateCode(codeStr: string) {
   try {
     console.log("Evaluando sesión...");
 
-    // 1. Limpiar bloques Markdown
+    // 1. Limpiar bloques Markdown y palabras sueltas que la IA cuela
     let cleanCode = codeStr
-      .replace(/```javascript/g, '')
-      .replace(/```js/g, '')
-      .replace(/```/g, '')
+      .replace(/```javascript\s*/gi, '')
+      .replace(/```js\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .replace(/^javascript\s*\n/gim, '')   // "javascript" solo en una línea
+      .replace(/^js\s*\n/gim, '')
       .trim();
 
     // 2. Sanitizar métodos inexistentes que la IA alucina
@@ -90,8 +96,10 @@ export function evaluateCode(codeStr: string) {
     cleanCode = cleanCode.replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)');
     cleanCode = cleanCode.replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
     cleanCode = cleanCode.replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
-    // Números MIDI usados como nombre de sonido → sawtooth como fallback
-    cleanCode = cleanCode.replace(/\.s\(\s*(\d+)\s*\)/g, '.s("sawtooth")');
+    // .s(número) → .s("sawtooth")  (número literal JS en .s())
+    cleanCode = cleanCode.replace(/\.s\(\s*\d+\s*\)/g, '.s("sawtooth")');
+    // freq() sin .s() produce números en el slot de sonido — añadir .s("sine")
+    cleanCode = cleanCode.replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")');
 
     // 3. Intentar transpilación
     let codeToRun = cleanCode;

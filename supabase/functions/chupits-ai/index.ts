@@ -28,14 +28,16 @@ Deno.serve(async (req: Request) => {
   ══════════════════════════════════════════
 
   PERCUSIÓN (samples de batería reales — úsalos con s()):
-  - Kicks/Bombos: "bd"   → variaciones: "bd:0" "bd:1" "bd:2" ... "bd:7"
-  - Snare:        "sd"   → variaciones: "sd:0" "sd:1" ... "sd:5"
-  - Hi-hat cerrado: "hh" → variaciones: "hh:0" "hh:1" ... "hh:4"
-  - Hi-hat abierto: "oh" → variaciones: "oh:0" "oh:1"
-  - Clap:         "cp"   → variaciones: "cp:0" "cp:1"
-  - Roland 909:   "RolandTR909" (kick 909 clásico)
-  - Roland 808:   "RolandTR808BassDrum"
-  - 606:          "RolandTR606"
+  - Kick/Bombo:     "bd"  → variaciones con ":0" ":1" ":2" ":3"  (ej: "bd:2")
+  - Snare:          "sd"  → variaciones "sd:0" "sd:1" "sd:2"
+  - Hi-hat cerrado: "hh"  → variaciones "hh:0" "hh:1" "hh:2"
+  - Hi-hat abierto: "oh"  → "oh:0" "oh:1"
+  - Clap:           "cp"  → "cp:0" "cp:1"
+  - Crash:          "cr"  → "cr:0"
+  - Rim:            "rim" → "rim:0"
+  - Percusión:      "perc"→ "perc:0" "perc:1"
+  - Roland TR-909:  "RolandTR909_bd" "RolandTR909_hh" "RolandTR909_sd" "RolandTR909_cp"
+  - Roland TR-808:  "RolandTR808_bd" "RolandTR808_hh" "RolandTR808_sd"
 
   SINTETIZADORES (para basslines y melodías — úsalos con note() + s()):
   - "sawtooth" → onda sierra, ideal para basslines duras
@@ -57,10 +59,11 @@ Deno.serve(async (req: Request) => {
   // Audio: Hard Techno 150 BPM
   setCps(2.5);
   stack(
-    s("bd*4").gain(0.95).speed(1.1),
-    s("hh*16").gain(0.4).pan("<-0.4 0.4>"),
-    s("sd:1").every(4, x => x.speed(1.2)).struct("~ x ~ x").gain(0.7),
-    note("c1 ~ eb1 ~").s("sawtooth").lpf(300).gain(0.85).distort(0.4),
+    s("bd:0*4").gain(0.95),
+    s("hh:0*8").gain(0.35).pan("<-0.4 0.4>"),
+    s("oh:0").struct("~ ~ ~ x").gain(0.5),
+    s("sd:0").struct("~ x ~ x").gain(0.7),
+    note("c1 ~ eb1 ~").s("sawtooth").lpf(300).gain(0.85),
     note("<c2 bb1 ab1 g1>").s("square").lpf(600).gain(0.5).release(0.1)
   ).play();
 
