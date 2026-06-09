@@ -1,9 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { GoogleGenAI } from "npm:@google/genai";
 
-// Initialize Gemini client using the environment variable
-const geminiClient = new GoogleGenAI({ apiKey: Deno.env.get("GEMINI_API_KEY") });
-
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -16,6 +13,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY environment variable is missing in Supabase Edge Function.");
+    }
+
+    // Initialize Gemini client dynamically per request to avoid module-level crashes
+    const geminiClient = new GoogleGenAI({ apiKey });
+
     const { prompt, currentEditorState } = await req.json();
 
     const systemInstruction = `Eres un experto en live coding audiovisual autónomo llamado "Chupits Beat".
@@ -39,10 +44,15 @@ Deno.serve(async (req: Request) => {
 
     const stream = new ReadableStream({
       async start(controller) {
-        for await (const chunk of responseStream) {
-          controller.enqueue(new TextEncoder().encode(chunk.text));
+        try {
+          for await (const chunk of responseStream) {
+            controller.enqueue(new TextEncoder().encode(chunk.text));
+          }
+          controller.close();
+        } catch (streamError) {
+          console.error("Streaming error:", streamError);
+          controller.error(streamError);
         }
-        controller.close();
       }
     });
 
@@ -55,8 +65,8 @@ Deno.serve(async (req: Request) => {
       }
     });
   } catch (error) {
-    console.error("Error calling Gemini API:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("Error calling Gemini API:", error.message || error);
+    return new Response(JSON.stringify({ error: error.message || "Unknown error occurred" }), {
       status: 500,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
