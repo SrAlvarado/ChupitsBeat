@@ -1,13 +1,13 @@
 // @ts-nocheck
 import { transpiler } from '@strudel/transpiler';
-import { evaluate } from '@strudel/core';
+import { 
+  evaluate, stack, note, s, slow, fast, every, jux,
+  gain, pan, room, size, delay, cut, legato, speed, accelerate
+} from '@strudel/core';
+
 import { initAudioOnFirstClick, getAudioContext } from '@strudel/webaudio';
 import Hydra from 'hydra-synth';
 import Meyda from 'meyda';
-
-// Variable global para evitar reinicializaciones
-let hydraInstance = null;
-let isAudioInitialized = false;
 
 /**
  * Inicializa Hydra de fondo sin capturar micrófono.
@@ -26,7 +26,18 @@ export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   
   // Fondo base negro
   window.solid(0, 0, 0).out();
-  console.log("Hydra inicializado.");
+  
+  // Exponer funciones de Strudel al objeto global para que eval() las encuentre
+  const strudelGlobals = {
+    stack, note, s, slow, fast, every, jux,
+    gain, pan, room, size, delay, cut, legato, speed, accelerate
+  };
+  
+  Object.entries(strudelGlobals).forEach(([key, val]) => {
+    window[key] = val;
+  });
+  
+  console.log("Hydra y funciones de Strudel inicializadas globalmente.");
 }
 
 /**
