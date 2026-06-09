@@ -84,10 +84,19 @@ export function evaluateCode(codeStr: string) {
     });
     
     // Nos aseguramos de obtener la cadena de texto del código
-    const codeToEval = typeof transpiled === 'string' ? transpiled : (transpiled.code || transpiled);
+    let codeToEval = '';
+    if (typeof transpiled === 'string') {
+      codeToEval = transpiled;
+    } else if (transpiled && typeof transpiled.output === 'string') {
+      codeToEval = transpiled.output;
+    } else if (transpiled && typeof transpiled.code === 'string') {
+      codeToEval = transpiled.code;
+    } else {
+      codeToEval = String(transpiled);
+    }
 
-    if (typeof codeToEval !== 'string') {
-      console.error("El transpiler no devolvió una cadena válida:", codeToEval);
+    if (!codeToEval || codeToEval === '[object Object]') {
+      console.error("No se pudo extraer una cadena de código válida del transpiler:", transpiled);
       return;
     }
 
