@@ -4,6 +4,7 @@ import {
   evaluate, stack, note, s, slow, fast, every, jux,
   gain, pan, room, size, delay, cut, legato, speed, accelerate
 } from '@strudel/core';
+import { mini } from '@strudel/mini';
 
 import { initAudioOnFirstClick, getAudioContext } from '@strudel/webaudio';
 import Hydra from 'hydra-synth';
@@ -34,7 +35,8 @@ export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   // Exponer funciones de Strudel al objeto global para que eval() las encuentre
   const strudelGlobals = {
     stack, note, s, slow, fast, every, jux,
-    gain, pan, room, size, delay, cut, legato, speed, accelerate
+    gain, pan, room, size, delay, cut, legato, speed, accelerate,
+    m: mini, mini: mini
   };
   
   Object.entries(strudelGlobals).forEach(([key, val]) => {
