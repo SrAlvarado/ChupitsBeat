@@ -7,12 +7,24 @@ import { registerSynthSounds, registerZZFXSounds, samples } from 'superdough';
 import Hydra from 'hydra-synth';
 
 const DS = 'https://raw.githubusercontent.com/felixroos/dough-samples/main';
-// EmuSP12.json tiene los nombres cortos: bd, sd, hh, oh, cp, cr, rd, rim, perc
-// tidal-drum-machines.json tiene nombres compuestos: RolandTR909_bd, etc.
 
 let hydraInstance = null;
 let isAudioInitialized = false;
 let replInstance = null;
+
+// Mapa de patrones por track: { 'A': Pattern, 'B': Pattern }
+const trackPatterns: Map<string, unknown> = new Map();
+
+function rebuildScheduler() {
+  if (!replInstance) return;
+  const patterns = [...trackPatterns.values()];
+  if (patterns.length === 0) { replInstance.stop(); return; }
+  const combined = patterns.length === 1
+    ? patterns[0]
+    : strudelCore.stack(...patterns);
+  replInstance.setPattern(combined);
+  replInstance.start();
+}
 
 export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   if (hydraInstance) return;
@@ -43,65 +55,59 @@ export async function initAudioEngine() {
 
   await initAudioOnFirstClick();
 
-  // Registrar sintetizadores built-in y cargar sample banks de batería
   await Promise.all([
     registerSynthSounds(),
     registerZZFXSounds(),
-    // EmuSP12 tiene nombres cortos: bd, sd, hh, oh, cp, cr, rd, rim, perc
     samples(`${DS}/EmuSP12.json`).catch(e => console.warn('[samples] EmuSP12 falló:', e)),
-    // Drum machines con nombres compuestos (RolandTR909_bd, etc.)
     samples(`${DS}/tidal-drum-machines.json`).catch(e => console.warn('[samples] drum-machines falló:', e)),
   ]);
 
-  // Crear el REPL de Strudel (no arrancar aún — necesita patrón primero)
   replInstance = webaudioRepl();
 
-  // Parchear .play() para que el código de la IA funcione
+  // Parchear .play() para que registre el patrón en el track activo
   const Pattern = strudelCore.Pattern;
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
-      replInstance.setPattern(this);
-      replInstance.start();
+      const trackId = (window as any).__currentTrack ?? 'A';
+      trackPatterns.set(trackId, this);
+      rebuildScheduler();
       return this;
     };
   }
 
-  // Exponer controles del scheduler globalmente para que el código de la IA los use
   window.setCps = (cps) => replInstance.setCps(cps);
   window.setcps = window.setCps;
   window.setCpm = (cpm) => replInstance.setCps(cpm / 60);
   window.setcpm = window.setCpm;
-  window.hush   = () => replInstance.stop();
+  window.hush   = () => { trackPatterns.clear(); replInstance.stop(); };
 
   isAudioInitialized = true;
-  console.log("Motor de audio listo. Samples cargados: bd, sd, hh, 808, TR-909...");
+  console.log("Motor de audio listo.");
 }
 
-export function evaluateCode(codeStr: string) {
+function sanitize(code: string): string {
+  return code
+    .replace(/```javascript\s*/gi, '')
+    .replace(/```js\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .replace(/^javascript\s*\n/gim, '')
+    .replace(/^js\s*\n/gim, '')
+    .trim()
+    .replace(/\.f\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)')
+    .replace(/\.f\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)')
+    .replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)')
+    .replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)')
+    .replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)')
+    .replace(/\.s\(\s*\d+\s*\)/g, '.s("sawtooth")')
+    .replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")');
+}
+
+export function evaluateCode(codeStr: string, trackId: string = 'A') {
   try {
-    console.log("Evaluando sesión...");
+    (window as any).__currentTrack = trackId;
 
-    // 1. Limpiar bloques Markdown y palabras sueltas que la IA cuela
-    let cleanCode = codeStr
-      .replace(/```javascript\s*/gi, '')
-      .replace(/```js\s*/gi, '')
-      .replace(/```\s*/g, '')
-      .replace(/^javascript\s*\n/gim, '')   // "javascript" solo en una línea
-      .replace(/^js\s*\n/gim, '')
-      .trim();
+    let cleanCode = sanitize(codeStr);
 
-    // 2. Sanitizar métodos inexistentes que la IA alucina
-    cleanCode = cleanCode.replace(/\.f\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
-    cleanCode = cleanCode.replace(/\.f\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
-    cleanCode = cleanCode.replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)');
-    cleanCode = cleanCode.replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
-    cleanCode = cleanCode.replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
-    // .s(número) → .s("sawtooth")  (número literal JS en .s())
-    cleanCode = cleanCode.replace(/\.s\(\s*\d+\s*\)/g, '.s("sawtooth")');
-    // freq() sin .s() produce números en el slot de sonido — añadir .s("sine")
-    cleanCode = cleanCode.replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")');
-
-    // 3. Intentar transpilación
     let codeToRun = cleanCode;
     try {
       const transpiled = transpiler(cleanCode, { wrapAsync: false, addReturn: false });
@@ -112,7 +118,6 @@ export function evaluateCode(codeStr: string) {
       console.warn("Transpiler falló, usando código plano.");
     }
 
-    // 4. Ejecutar via script injection (soporta Hydra + Strudel con .play() parcheado)
     const executionWrapper = `
       (function() {
         const m = window.m || window.mini;
@@ -120,10 +125,13 @@ export function evaluateCode(codeStr: string) {
         const s = window.s;
         const stack = window.stack;
         const osc = window.osc;
+        const setCps = window.setCps;
+        const setcps = window.setCps;
+        const setCpm = window.setCpm;
         try {
           ${codeToRun}
         } catch (err) {
-          console.error("Error dentro del ejecutor:", err);
+          console.error("[Track ${trackId}] Error:", err);
         }
       })();
     `;
@@ -133,13 +141,20 @@ export function evaluateCode(codeStr: string) {
     document.body.appendChild(script);
     document.body.removeChild(script);
 
-    console.log("Código ejecutado.");
+    console.log(`[Track ${trackId}] Código ejecutado.`);
   } catch (err) {
-    console.error("Error fatal en evaluación:", err);
+    console.error(`[Track ${trackId}] Error fatal:`, err);
   }
 }
 
+export function clearTrack(trackId: string) {
+  trackPatterns.delete(trackId);
+  rebuildScheduler();
+  console.log(`[Track ${trackId}] Limpiado.`);
+}
+
 export function stopEngines() {
+  trackPatterns.clear();
   if (replInstance) replInstance.stop();
   if (window.solid) window.solid(0, 0, 0).out();
 }
