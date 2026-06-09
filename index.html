@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/ChupitsBeat/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>temp-app</title>
+    <title>Chupits Beat</title>
+    <!-- Polyfill for global object required by hydra-synth / meyda in Vite -->
+    <script>
+      if (typeof global === 'undefined') {
+        window.global = window;
+      }
+    </script>
     <script type="module" crossorigin src="/ChupitsBeat/assets/index-BMg0O1El.js"></script>
     <link rel="stylesheet" crossorigin href="/ChupitsBeat/assets/index-Cti2XO1k.css">
   </head>
