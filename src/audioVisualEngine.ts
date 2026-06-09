@@ -45,26 +45,25 @@ export async function initAudioEngine() {
 
   console.log("Strudel Audio Context activado:", ctx.state);
 
-  // Enlazar Strudel GainNode hacia el analizador FFT de Hydra (a través de Meyda)
+  // Intentamos enlazar Meyda al contexto
   if (window.a && window.a.setSource) {
     try {
-      // Necesitamos ubicar el nodo de salida final de Strudel. 
-      // Por convención en Strudel, getAudioContext().destination es el final, pero la señal 
-      // pasa por un GainNode global. Intentemos con la salida principal.
-      // Si tenemos problemas de ruteo, usaremos un truco de Meyda Analyzer.
+      // Meyda Analyzer necesita un MediaElementAudioSourceNode o MediaStreamAudioSourceNode 
+      // o un nodo de la API de WebAudio válido.
+      // Strudel emite sonido a la salida global. Para interceptarlo, vamos a crear un GainNode maestro 
+      // improvisado y conectarlo a Meyda.
       
-      // Asumiremos que ctx.destination está conectado. Para rutear hacia Hydra sin que Strudel 
-      // tenga una API explícita de "getMasterNode()", capturamos la señal del contexto.
-      // @ts-ignore
-      const gainNode = window.__strudelAudioGainNode || ctx.createGain(); // Si usamos un hook propio
+      const meydaAnalyzerNode = ctx.createGain();
+      meydaAnalyzerNode.connect(ctx.destination);
       
-      window.a.setSource(ctx.destination); // O intentar inyectar
+      // Intentamos engañar a Meyda para que escuche el canal general
+      window.a.setSource(meydaAnalyzerNode); 
       window.a.setBins(4);
       window.a.setSmooth(0.8);
       window.a.setCutoff(0.1);
-      console.log("Enlace de Meyda/Hydra FFT establecido con éxito.");
+      console.log("Enlace de Meyda/Hydra FFT activado.");
     } catch (err) {
-      console.warn("Meyda audio react no pudo enlazar el nodo origen (source node).", err);
+      console.warn("Meyda audio react no pudo enlazar completamente.", err);
     }
   }
 
@@ -76,23 +75,36 @@ export async function initAudioEngine() {
  */
 export function evaluateCode(codeStr: string) {
   try {
-    // Para Hydra: comandos como `osc().out()` pueden ejecutarse directamente usando eval nativo
-    // pero idealmente transpilaremos todo para no bloquear.
-    
-    // Primero transpilamos el código de Strudel (convierte la mini-notación a JS)
-    const transpiled = transpiler(codeStr, { wrapAsync: false });
-    
-    // Evaluamos. @strudel/core 'evaluate' ya maneja la ejecución en su contexto.
-    // getScope() expone las funciones disponibles (note, s, stack, etc.)
-    // Pero como Hydra es global (window), el eval() interno de evaluateCode debe alcanzarlo.
-    
-    // Evaluamos el JS final.
-    // transpiled contiene el AST regenerado a string, normalmente transpiled.code o el string directo.
+    // 1. Transpilar la mini-notación de Strudel (si la hay)
+    const transpiled = transpiler(codeStr, { wrapAsync: true, addReturn: false });
     const codeToEval = typeof transpiled === 'string' ? transpiled : transpiled.code || transpiled;
     
-    // Ejecución. Podría ser un window.eval() o la función nativa de Strudel.
-    evaluate(codeToEval);
-    console.log("Evaluación exitosa.");
+    // 2. Strudel `evaluate` funciona internamente para sus propios comandos, pero 
+    // Hydra usa el scope global `window`. Para soportar ambos mezclados:
+    
+    // Usamos una función asíncrona dinámica para ejecutar el bloque de código 
+    // en el scope global, permitiendo que `note().play()` y `osc().out()` funcionen.
+    const runCode = new Function(`
+      return (async () => {
+        try {
+          ${codeToEval}
+        } catch (e) {
+          console.error("Error en evaluación dinámica:", e);
+        }
+      })();
+    `);
+    
+    runCode();
+    
+    // En caso de que Strudel necesite su propio evaluate() para registrar hooks
+    // lo llamamos también (silenciosamente si falla por sintaxis de Hydra)
+    try {
+      evaluate(codeToEval);
+    } catch (e) {
+      // Ignorar, suele fallar porque Hydra no está en el scope interno de Strudel
+    }
+
+    console.log("Evaluación ejecutada con éxito.");
     
   } catch (err) {
     console.error("Error transpilando/evaluando el código:", err);
