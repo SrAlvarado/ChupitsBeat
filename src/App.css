@@ -70,10 +70,21 @@ button:hover:not(:disabled) {
 }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-start { border-color: #00ff88; color: #00ff88; }
-.btn-stop  { border-color: #ff2255; color: #ff2255; }
-.btn-eval  { border-color: #00ffcc; color: #00ffcc; font-size: 0.75rem; }
-.btn-clear { border-color: #ff8800; color: #ff8800; font-size: 0.75rem; }
+.btn-start   { border-color: #00ff88; color: #00ff88; }
+.btn-stop    { border-color: #ff2255; color: #ff2255; }
+.btn-eval    { border-color: #00ffcc; color: #00ffcc; font-size: 0.75rem; }
+.btn-clear   { border-color: #ff8800; color: #ff8800; font-size: 0.75rem; }
+.btn-auto    { border-color: #cc00ff; color: #cc00ff; }
+.btn-auto-on {
+  border-color: #cc00ff; color: #000;
+  background: #cc00ff;
+  box-shadow: 0 0 14px rgba(200,0,255,0.6);
+  animation: pulse-auto 0.9s infinite;
+}
+@keyframes pulse-auto {
+  0%, 100% { box-shadow: 0 0 8px rgba(200,0,255,0.4); }
+  50%       { box-shadow: 0 0 20px rgba(200,0,255,0.85); }
+}
 
 /* ── Editors Grid ── */
 .editors-grid {
@@ -93,6 +104,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.1);
+  transition: border-color 0.3s;
+}
+.track-streaming {
+  border-color: rgba(200,0,255,0.5);
+  box-shadow: 0 0 12px rgba(200,0,255,0.2);
 }
 
 .track-header {
@@ -159,8 +175,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   background: rgba(255,68,170,0.1);
 }
 
-.ai-input {
-  flex: 1;
+.ai-style-input,
+.ai-prompt-input {
   padding: 0.6rem 1rem;
   font-size: 0.9rem;
   font-family: inherit;
@@ -171,13 +187,16 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   outline: none;
   transition: all 0.2s;
 }
-.ai-input:focus {
+.ai-style-input  { flex: 0 0 220px; border-color: rgba(200,0,255,0.35); }
+.ai-prompt-input { flex: 1; }
+.ai-style-input:focus,
+.ai-prompt-input:focus {
   background: rgba(255,255,255,0.12);
   border-color: #cc00ff;
   box-shadow: 0 0 12px rgba(200,0,255,0.3);
 }
-.ai-input.ai-loading { border-color: #ffaa00; animation: pulse 1s infinite; }
-.ai-input::placeholder { color: rgba(255,255,255,0.4); }
+.ai-style-input::placeholder,
+.ai-prompt-input::placeholder { color: rgba(255,255,255,0.4); }
 
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 6px rgba(255,170,0,0.3); }
