@@ -12,23 +12,27 @@ let hydraInstance = null;
 let isAudioInitialized = false;
 let replInstance = null;
 
-// Mapa de patrones por track: { 'A': Pattern, 'B': Pattern }
+// Patrón por track. El scheduler siempre recibe stack(A, B).
 const trackPatterns: Map<string, unknown> = new Map();
 
-function rebuildScheduler() {
+async function rebuildScheduler() {
   if (!replInstance) return;
   const patterns = [...trackPatterns.values()];
   if (patterns.length === 0) { replInstance.stop(); return; }
+
   const combined = patterns.length === 1
     ? patterns[0]
     : strudelCore.stack(...patterns);
-  replInstance.setPattern(combined);
-  replInstance.start();
+
+  // setPattern con keep=true para NO reiniciar el reloj
+  await replInstance.setPattern(combined, true);
+
+  // Solo arrancar si no estaba ya corriendo
+  if (!replInstance.state?.started) replInstance.start();
 }
 
 export function initVisualEngine(canvasElement: HTMLCanvasElement) {
   if (hydraInstance) return;
-
   hydraInstance = new Hydra({
     canvas: canvasElement,
     detectAudio: false,
@@ -37,52 +41,43 @@ export function initVisualEngine(canvasElement: HTMLCanvasElement) {
     width: window.innerWidth,
     height: window.innerHeight
   });
-
   window.solid(0, 0, 0).out();
-
-  Object.keys(strudelCore).forEach(key => {
-    window[key] = strudelCore[key];
-  });
-
+  Object.keys(strudelCore).forEach(key => { window[key] = strudelCore[key]; });
   window.m = mini;
   window.mini = mini;
-
-  console.log("Motor visual listo.");
 }
 
 export async function initAudioEngine() {
   if (isAudioInitialized) return;
-
   await initAudioOnFirstClick();
-
   await Promise.all([
     registerSynthSounds(),
     registerZZFXSounds(),
-    samples(`${DS}/EmuSP12.json`).catch(e => console.warn('[samples] EmuSP12 falló:', e)),
-    samples(`${DS}/tidal-drum-machines.json`).catch(e => console.warn('[samples] drum-machines falló:', e)),
+    samples(`${DS}/EmuSP12.json`).catch(e => console.warn('[samples] EmuSP12:', e)),
+    samples(`${DS}/tidal-drum-machines.json`).catch(e => console.warn('[samples] drum-machines:', e)),
   ]);
 
   replInstance = webaudioRepl();
 
-  // Parchear .play() para que registre el patrón en el track activo
   const Pattern = strudelCore.Pattern;
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
       const trackId = (window as any).__currentTrack ?? 'A';
       trackPatterns.set(trackId, this);
-      rebuildScheduler();
+      rebuildScheduler();   // async pero no bloqueante — correcto
       return this;
     };
   }
 
-  window.setCps = (cps) => replInstance.setCps(cps);
-  window.setcps = window.setCps;
-  window.setCpm = (cpm) => replInstance.setCps(cpm / 60);
-  window.setcpm = window.setCpm;
-  window.hush   = () => { trackPatterns.clear(); replInstance.stop(); };
+  const MAX_CPS = 2.0; // 120 BPM tope
+  window.setCps  = (cps) => replInstance.setCps(Math.min(cps, MAX_CPS));
+  window.setcps  = window.setCps;
+  window.setCpm  = (cpm) => replInstance.setCps(Math.min(cpm / 60, MAX_CPS));
+  window.setcpm  = window.setCpm;
+  window.hush    = () => { trackPatterns.clear(); replInstance.stop(); };
 
   isAudioInitialized = true;
-  console.log("Motor de audio listo.");
+  console.log('[Chupits] Motor listo — samples: bd, sd, hh, oh, cp, RolandTR909...');
 }
 
 function sanitize(code: string): string {
@@ -99,58 +94,38 @@ function sanitize(code: string): string {
     .replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)')
     .replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)')
     .replace(/\.s\(\s*\d+\s*\)/g, '.s("sawtooth")')
-    .replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")');
+    .replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")')
+    // Clamp setCps/setcps to max 2.0 (120 BPM)
+    .replace(/\bset[Cc]ps\(\s*([\d.]+)\s*\)/g, (_, n) =>
+      `setCps(${Math.min(parseFloat(n), 2.0)})`
+    );
 }
 
 export function evaluateCode(codeStr: string, trackId: string = 'A') {
+  (window as any).__currentTrack = trackId;
+  let clean = sanitize(codeStr);
+  let codeToRun = clean;
   try {
-    (window as any).__currentTrack = trackId;
+    const t = transpiler(clean, { wrapAsync: false, addReturn: false });
+    codeToRun = typeof t === 'string' ? t : (t.output || t.code || clean);
+  } catch { /* usa código plano */ }
 
-    let cleanCode = sanitize(codeStr);
-
-    let codeToRun = cleanCode;
-    try {
-      const transpiled = transpiler(cleanCode, { wrapAsync: false, addReturn: false });
-      codeToRun = typeof transpiled === 'string'
-        ? transpiled
-        : (transpiled.output || transpiled.code || cleanCode);
-    } catch {
-      console.warn("Transpiler falló, usando código plano.");
-    }
-
-    const executionWrapper = `
-      (function() {
-        const m = window.m || window.mini;
-        const note = window.note;
-        const s = window.s;
-        const stack = window.stack;
-        const osc = window.osc;
-        const setCps = window.setCps;
-        const setcps = window.setCps;
-        const setCpm = window.setCpm;
-        try {
-          ${codeToRun}
-        } catch (err) {
-          console.error("[Track ${trackId}] Error:", err);
-        }
-      })();
-    `;
-
-    const script = document.createElement('script');
-    script.textContent = executionWrapper;
-    document.body.appendChild(script);
-    document.body.removeChild(script);
-
-    console.log(`[Track ${trackId}] Código ejecutado.`);
-  } catch (err) {
-    console.error(`[Track ${trackId}] Error fatal:`, err);
-  }
+  const script = document.createElement('script');
+  script.textContent = `(function(){
+    const m=window.m||window.mini, note=window.note, s=window.s,
+          stack=window.stack, osc=window.osc,
+          setCps=window.setCps, setcps=window.setCps, setCpm=window.setCpm;
+    try { ${codeToRun} }
+    catch(err){ console.error("[Track ${trackId}]",err); }
+  })();`;
+  document.body.appendChild(script);
+  document.body.removeChild(script);
+  console.log(`[Track ${trackId}] ejecutado`);
 }
 
 export function clearTrack(trackId: string) {
   trackPatterns.delete(trackId);
   rebuildScheduler();
-  console.log(`[Track ${trackId}] Limpiado.`);
 }
 
 export function stopEngines() {

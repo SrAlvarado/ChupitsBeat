@@ -24,6 +24,50 @@ Deno.serve(async (req: Request) => {
   No incluyas formateo Markdown (sin \`\`\`), ni explicaciones. Responde ÚNICAMENTE con código JavaScript ejecutable.
 
   ══════════════════════════════════════════
+  TEMPO — REGLA ABSOLUTA
+  ══════════════════════════════════════════
+  El tempo MÁXIMO es 120 BPM = setCps(2.0).
+  NUNCA uses un valor mayor que 2.0 en setCps().
+  Rango permitido: setCps(1.0) [60 BPM] hasta setCps(2.0) [120 BPM].
+  Recomendado para techno: setCps(1.8) [108 BPM] o setCps(2.0) [120 BPM].
+
+  ══════════════════════════════════════════
+  CONSTRUCCIÓN DE RITMO (inspirado en Sonic Pi)
+  ══════════════════════════════════════════
+
+  PRINCIPIO 1 — Capas independientes (live_loop en Sonic Pi → stack en Strudel):
+    Cada instrumento es una capa dentro del stack. Cada capa tiene su propio ritmo.
+    s("bd:0*4")            → bombo en cada pulso (4 por ciclo)
+    s("sd:0").struct("~ x ~ x")  → caja en tiempos 2 y 4
+    s("hh:0*8")            → hi-hat en corcheas (8 por ciclo)
+
+  PRINCIPIO 2 — Ritmos euclídeos (spread en Sonic Pi → euclid en Strudel):
+    Distribuyen N golpes en M pasos de forma natural y humana.
+    s("bd:0").euclid(3,8)  → patrón rumba: x . . x . . x .
+    s("perc:0").euclid(5,8)→ patrón 5/8 africano
+    s("hh:0").euclid(7,16) → hi-hat shuffle sincopado
+
+  PRINCIPIO 3 — Acentos y groove (amp en Sonic Pi → gain en Strudel):
+    Varía el volumen por pulso para crear groove. Nunca todos los golpes igual.
+    s("hh:0*8").gain("<0.9 0.4 0.7 0.3 0.8 0.4 0.6 0.3>")  → shuffle
+    s("bd:0*4").gain("<1.0 0.85 0.9 0.8>")                  → acento en tiempo 1
+
+  PRINCIPIO 4 — Evolución por ciclos (ring/choose en Sonic Pi → <> en Strudel):
+    <> alterna entre valores cada ciclo para que el patrón evolucione.
+    s("<bd:0 bd:1 bd:2 bd:0>")           → bombo cambia cada 4 ciclos
+    note("<c1 ~ c1 eb1> <eb1 ~ g1 ~>").s("sawtooth")  → melodía evoluciona
+
+  PRINCIPIO 5 — Polirritmo (múltiples live_loops en Sonic Pi → stack en Strudel):
+    Usa diferentes subdivisiones para crear tensión rítmica.
+    s("perc:0*3")  contra  s("hh:0*4")  → polirritmo 3 contra 4
+    s("rim*5")     contra  s("bd:0*4")  → polirritmo 5 contra 4
+
+  PRINCIPIO 6 — Silencio como elemento rítmico (sleep en Sonic Pi → ~ en Strudel):
+    El silencio es tan importante como el sonido. Usa ~ generosamente.
+    s("bd:0 ~ ~ bd:0 ~ bd:0 ~ ~")       → patrón con respiración
+    note("c1 ~ ~ eb1").s("sawtooth")    → bassline con espacio
+
+  ══════════════════════════════════════════
   SONIDOS DISPONIBLES — CATÁLOGO COMPLETO
   ══════════════════════════════════════════
 
@@ -51,24 +95,25 @@ Deno.serve(async (req: Request) => {
   3. note() SIEMPRE usa nombres de nota como "c1", "eb2", "f#3" — JAMÁS números MIDI
   4. Efectos válidos: .gain(0-1), .lpf(hz), .hpf(hz), .speed(x), .delay(0-1), .room(0-1), .pan(-1/1), .attack(s), .release(s), .distort(0-1)
   5. NUNCA uses .f(), .filter(), ni ningún método que no esté en la lista de efectos
+  6. setCps() MÁXIMO 2.0 — nunca más alto
 
   ══════════════════════════════════════════
-  EJEMPLO HARD TECHNO / SCHRANZ CORRECTO
+  EJEMPLO HARD TECHNO 120 BPM CORRECTO
   ══════════════════════════════════════════
 
-  // Audio: Hard Techno 150 BPM
-  setCps(2.5);
+  // Audio: Hard Techno 120 BPM con groove euclídeo
+  setCps(2.0);
   stack(
-    s("bd:0*4").gain(0.95),
-    s("hh:0*8").gain(0.35).pan("<-0.4 0.4>"),
-    s("oh:0").struct("~ ~ ~ x").gain(0.5),
-    s("sd:0").struct("~ x ~ x").gain(0.7),
-    note("c1 ~ eb1 ~").s("sawtooth").lpf(300).gain(0.85),
-    note("<c2 bb1 ab1 g1>").s("square").lpf(600).gain(0.5).release(0.1)
+    s("bd:0*4").gain("<1.0 0.85 0.9 0.8>"),
+    s("hh:0").euclid(7,16).gain(0.4).pan("<-0.3 0.3>"),
+    s("oh:0").euclid(3,8).gain(0.55),
+    s("sd:0").struct("~ x ~ x").gain("<0.7 0.65>"),
+    s("perc:0").euclid(5,16).gain(0.5).speed("<1 1.5>"),
+    note("<c1 ~ eb1 ~> <g1 ~ bb1 ~>").s("sawtooth").lpf("<280 350>").gain(0.8).release(0.05)
   ).play();
 
   // Visuales: industrial oscuro
-  osc(80, 0.01, 1.2).diff(osc(3, 0.2, 0.8)).modulate(noise(4), 0.15).color(0.9, 0.1, 0.05).out();
+  osc(60, 0.01, 1.2).diff(osc(3, 0.2, 0.8)).modulate(noise(4), 0.15).color(0.9, 0.1, 0.05).out();
 
   ══════════════════════════════════════════
   REGLAS VISUALES (Hydra)
