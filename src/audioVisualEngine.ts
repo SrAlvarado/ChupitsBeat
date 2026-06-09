@@ -39,16 +39,15 @@ export async function initAudioEngine() {
 
   await initAudioOnFirstClick();
 
-  // Crear el REPL de Strudel con salida webaudio (esto configura el scheduler)
+  // Crear el REPL de Strudel con salida webaudio (no iniciar aún — necesita patrón primero)
   replInstance = webaudioRepl();
-  await replInstance.start();
 
   // Parchear .play() en Pattern.prototype para que el código generado por la IA funcione
   const Pattern = strudelCore.Pattern;
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
-      replInstance.setPattern(this);
-      if (!replInstance.state.started) replInstance.start();
+      replInstance.setPattern(this);  // primero el patrón
+      replInstance.start();            // luego arrancar
       return this;
     };
   }
