@@ -76,35 +76,36 @@ export async function initAudioEngine() {
 export function evaluateCode(codeStr: string) {
   try {
     // 1. Transpilar la mini-notación de Strudel (si la hay)
-    const transpiled = transpiler(codeStr, { wrapAsync: true, addReturn: false });
-    const codeToEval = typeof transpiled === 'string' ? transpiled : transpiled.code || transpiled;
+    // Usamos opciones que garanticen que devuelva el código como string
+    const transpiled = transpiler(codeStr, { 
+      wrapAsync: false, 
+      addReturn: false,
+      emitMiniLocations: false 
+    });
     
-    // 2. Strudel `evaluate` funciona internamente para sus propios comandos, pero 
-    // Hydra usa el scope global `window`. Para soportar ambos mezclados:
-    
-    // Usamos una función asíncrona dinámica para ejecutar el bloque de código 
-    // en el scope global, permitiendo que `note().play()` y `osc().out()` funcionen.
-    const runCode = new Function(`
-      return (async () => {
-        try {
-          ${codeToEval}
-        } catch (e) {
-          console.error("Error en evaluación dinámica:", e);
-        }
-      })();
-    `);
-    
-    runCode();
-    
-    // En caso de que Strudel necesite su propio evaluate() para registrar hooks
-    // lo llamamos también (silenciosamente si falla por sintaxis de Hydra)
+    // Nos aseguramos de obtener la cadena de texto del código
+    const codeToEval = typeof transpiled === 'string' ? transpiled : (transpiled.code || transpiled);
+
+    if (typeof codeToEval !== 'string') {
+      console.error("El transpiler no devolvió una cadena válida:", codeToEval);
+      return;
+    }
+
+    console.log("Ejecutando código transpiliado...");
+
+    // 2. Ejecutar el código en el scope global (donde vive Hydra)
+    // Usamos el eval indirecto para que se ejecute en el contexto global
+    const globalEval = eval;
+    globalEval(codeToEval);
+
+    // 3. También intentamos que Strudel procese el código por si acaso
     try {
       evaluate(codeToEval);
     } catch (e) {
-      // Ignorar, suele fallar porque Hydra no está en el scope interno de Strudel
+      // Ignorar errores si el código contiene funciones de Hydra que Strudel no conoce
     }
 
-    console.log("Evaluación ejecutada con éxito.");
+    console.log("Evaluación completada.");
     
   } catch (err) {
     console.error("Error transpilando/evaluando el código:", err);
