@@ -1,0 +1,151 @@
+/* Reset & Base Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Courier New', Courier, monospace;
+  background-color: #000;
+  color: #fff;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Hydra Canvas Background */
+.hydra-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Foreground UI */
+.ui-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.4); /* slight overlay to make code readable */
+}
+
+/* Header & Controls */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #00ffcc;
+  text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+}
+
+button {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.5rem 1rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #00ffcc;
+  box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-start { border-color: #00ff00; color: #00ff00; }
+.btn-eval { border-color: #00ffcc; color: #00ffcc; }
+.btn-stop { border-color: #ff0055; color: #ff0055; }
+
+/* Editor Section */
+.editor-section {
+  flex: 1;
+  padding: 0 2rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-editor {
+  flex: 1;
+  font-size: 1.1rem;
+  opacity: 0.85;
+  border-radius: 8px;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+/* Override CodeMirror background to be transparent */
+.cm-theme-dark .cm-scroller {
+  background: rgba(10, 10, 10, 0.6) !important;
+}
+
+/* AI Copilot Input */
+.ai-copilot-section {
+  padding: 2rem;
+  background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+}
+
+.ai-input {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: white;
+  outline: none;
+  transition: all 0.3s;
+}
+
+.ai-input:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #ff00ff;
+  box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+}
+
+.ai-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
