@@ -3,8 +3,10 @@ import { transpiler } from '@strudel/transpiler';
 import * as strudelCore from '@strudel/core';
 import { mini } from '@strudel/mini';
 import { initAudioOnFirstClick, webaudioRepl } from '@strudel/webaudio';
-import { registerSynthSounds, registerZZFXSounds } from 'superdough';
+import { registerSynthSounds, registerZZFXSounds, samples } from 'superdough';
 import Hydra from 'hydra-synth';
+
+const DS = 'https://raw.githubusercontent.com/felixroos/dough-samples/main';
 
 let hydraInstance = null;
 let isAudioInitialized = false;
@@ -24,7 +26,6 @@ export function initVisualEngine(canvasElement: HTMLCanvasElement) {
 
   window.solid(0, 0, 0).out();
 
-  // Exponer todo strudel-core globalmente para que el código generado funcione
   Object.keys(strudelCore).forEach(key => {
     window[key] = strudelCore[key];
   });
@@ -40,49 +41,54 @@ export async function initAudioEngine() {
 
   await initAudioOnFirstClick();
 
-  // Registrar los sonidos sintetizados built-in (sawtooth, square, triangle, sine, etc.)
-  await registerSynthSounds();
-  await registerZZFXSounds();
+  // Registrar sintetizadores built-in y cargar sample banks de batería
+  await Promise.all([
+    registerSynthSounds(),   // sawtooth, square, triangle, sine
+    registerZZFXSounds(),    // sonidos zzfx extra
+    samples(`${DS}/Dirt-Samples.json`),          // bd, sd, hh, cp, cr, rd, 808...
+    samples(`${DS}/tidal-drum-machines.json`),   // Roland TR-909, 808, 606...
+  ]);
 
-  // Crear el REPL de Strudel con salida webaudio (no iniciar aún — necesita patrón primero)
+  // Crear el REPL de Strudel (no arrancar aún — necesita patrón primero)
   replInstance = webaudioRepl();
 
-  // Parchear .play() en Pattern.prototype para que el código generado por la IA funcione
+  // Parchear .play() para que el código de la IA funcione
   const Pattern = strudelCore.Pattern;
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
-      replInstance.setPattern(this);  // primero el patrón
-      replInstance.start();            // luego arrancar
+      replInstance.setPattern(this);
+      replInstance.start();
       return this;
     };
   }
 
-  // hush() detiene el scheduler
   window.hush = () => replInstance.stop();
 
   isAudioInitialized = true;
-  console.log("Motor de audio listo.");
+  console.log("Motor de audio listo. Samples cargados: bd, sd, hh, 808, TR-909...");
 }
 
 export function evaluateCode(codeStr: string) {
   try {
     console.log("Evaluando sesión...");
 
-    // 1. Limpiar bloques Markdown que la IA a veces incluye
+    // 1. Limpiar bloques Markdown
     let cleanCode = codeStr
       .replace(/```javascript/g, '')
       .replace(/```js/g, '')
       .replace(/```/g, '')
       .trim();
 
-    // 2. Sanitizar métodos de Strudel que no existen pero la IA puede alucinar
+    // 2. Sanitizar métodos inexistentes que la IA alucina
     cleanCode = cleanCode.replace(/\.f\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
     cleanCode = cleanCode.replace(/\.f\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
     cleanCode = cleanCode.replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)');
     cleanCode = cleanCode.replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)');
     cleanCode = cleanCode.replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)');
+    // Números MIDI usados como nombre de sonido → sawtooth como fallback
+    cleanCode = cleanCode.replace(/\.s\(\s*(\d+)\s*\)/g, '.s("sawtooth")');
 
-    // 3. Intentar transpilación (convierte mini notation en JS válido)
+    // 3. Intentar transpilación
     let codeToRun = cleanCode;
     try {
       const transpiled = transpiler(cleanCode, { wrapAsync: false, addReturn: false });
@@ -93,7 +99,7 @@ export function evaluateCode(codeStr: string) {
       console.warn("Transpiler falló, usando código plano.");
     }
 
-    // 4. Ejecutar mediante inyección de script (funciona para Hydra + Strudel con .play() parcheado)
+    // 4. Ejecutar via script injection (soporta Hydra + Strudel con .play() parcheado)
     const executionWrapper = `
       (function() {
         const m = window.m || window.mini;
