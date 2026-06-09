@@ -3,6 +3,7 @@ import { transpiler } from '@strudel/transpiler';
 import * as strudelCore from '@strudel/core';
 import { mini } from '@strudel/mini';
 import { initAudioOnFirstClick, webaudioRepl } from '@strudel/webaudio';
+import { registerSynthSounds, registerZZFXSounds } from 'superdough';
 import Hydra from 'hydra-synth';
 
 let hydraInstance = null;
@@ -38,6 +39,10 @@ export async function initAudioEngine() {
   if (isAudioInitialized) return;
 
   await initAudioOnFirstClick();
+
+  // Registrar los sonidos sintetizados built-in (sawtooth, square, triangle, sine, etc.)
+  await registerSynthSounds();
+  await registerZZFXSounds();
 
   // Crear el REPL de Strudel con salida webaudio (no iniciar aún — necesita patrón primero)
   replInstance = webaudioRepl();

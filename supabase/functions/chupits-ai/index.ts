@@ -25,12 +25,15 @@ Deno.serve(async (req: Request) => {
 
   REGLAS CRÍTICAS DE AUDIO (Strudel):
   - Para reproducir múltiples patrones a la vez, DEBES usar obligatoriamente la función stack() y llamar a .play() SÓLO UNA VEZ al final del stack.
-  - Los métodos de efectos disponibles son: .gain(0-1), .lpf(hz), .hpf(hz), .bpf(hz), .delay(0-1), .room(0-1), .pan(-1 a 1), .speed(valor), .attack(s), .release(s)
+  - Los sonidos disponibles son EXACTAMENTE estos strings: "sawtooth", "square", "triangle", "sine". NUNCA uses números en .s().
+  - Las notas SIEMPRE deben ser strings con nombre de nota, NUNCA números MIDI. Ejemplos válidos: "c2", "e3", "g4", "bb2", "f#3".
+  - Los métodos de efectos disponibles son: .gain(0-1), .lpf(hz), .hpf(hz), .bpf(hz), .delay(0-1), .room(0-1), .pan(-1 a 1), .attack(s), .release(s)
   - NUNCA uses .f(), .filter() ni ningún método que no esté en la lista anterior.
   - Ejemplo CORRECTO de audio:
     stack(
       note("c2 [e2 g2]*4").s("sawtooth").lpf(800).gain(0.7),
-      note("e2 [g2 c3]*4").s("square").lpf(600).gain(0.5)
+      note("e3 [g3 c4]*4").s("square").lpf(600).gain(0.5),
+      note("c1*2").s("triangle").gain(0.8)
     ).play();
 
   REGLAS CRÍTICAS DE VISUALES (Hydra):
