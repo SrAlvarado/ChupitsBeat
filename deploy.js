@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import mime from 'mime-types';
+import WebSocket from 'ws';
 
 // Leer variables de entorno (proporcionadas por GitHub Actions)
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -14,7 +15,18 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+// Configurar el cliente usando 'ws' para compatibilidad con Node < 22 en GitHub Actions
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: {
+    persistSession: false
+  },
+  global: {
+    fetch: fetch
+  },
+  realtime: {
+    transport: WebSocket
+  }
+});
 
 // Recorre recursivamente el directorio de build
 function getFiles(dir, filesList = []) {
