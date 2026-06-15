@@ -3,14 +3,14 @@ import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { EditorView, keymap } from '@codemirror/view';
 import './App.css';
-import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo } from './audioVisualEngine';
+import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo, looksLikeRunnableCode } from './audioVisualEngine';
 import {
   GENRES, startSession, advanceSession, buildDirective,
   type Session, type TrackRole,
 } from './musicKnowledge';
 
 const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
-const AUTO_INTERVAL = 28000; // ms entre generaciones en modo auto
+const AUTO_INTERVAL = 15000; // ms entre generaciones en modo auto
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -110,7 +110,16 @@ export default function App() {
         setCode(prev => prev + chunk);
       }
 
-      if (!signal?.aborted) evaluateCode(full, trackId);
+      // No ejecutar respuestas truncadas/erróneas (rate limit de Groq, etc.):
+      // dejarían note(...) sin sonido → "fall back to triangle".
+      if (!signal?.aborted) {
+        if (looksLikeRunnableCode(full)) {
+          evaluateCode(full, trackId);
+        } else {
+          console.warn(`[IA Track ${trackId}] respuesta no ejecutable (truncada/rate-limit), se mantiene el patrón anterior`);
+          setCode(prev => `// ⚠️ respuesta incompleta (rate limit?) — patrón anterior intacto\n${prev}`);
+        }
+      }
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
         console.error(`[IA Track ${trackId}]`, err);
@@ -131,11 +140,11 @@ export default function App() {
     setSession(sess);
     setSessionTempo(sess.bpm);
 
-    // 2) Arranca los dos tracks coherentes en paralelo
-    await Promise.all([
-      streamToTrack('A', { sess, role: 'drums' }, signal),
-      streamToTrack('B', { sess, role: 'bassMelody' }, signal),
-    ]);
+    // 2) Arranca los dos tracks coherentes en SERIE (no en paralelo): así no
+    //    se dobla el consumo de tokens por minuto y evitamos el rate limit.
+    await streamToTrack('A', { sess, role: 'drums' }, signal);
+    if (signal.aborted) return;
+    await streamToTrack('B', { sess, role: 'bassMelody' }, signal);
 
     // 3) Loop: avanza la fase del set y regenera un track alternando
     while (!signal.aborted && isRunRef.current) {

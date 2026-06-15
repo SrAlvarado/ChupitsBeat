@@ -73,7 +73,7 @@ export async function initAudioEngine() {
   // ya no llaman a setCps (se elimina en sanitize). Mantenemos los globales
   // como no-ops seguros por si llega código antiguo, pero el tempo real lo
   // controla setSessionTempo().
-  const MAX_CPS = 2.7; // ~160 BPM, techo de seguridad (hard techno cabe)
+  const MAX_CPS = 128 / 60; // 128 BPM, techo de seguridad (sesión lenta/hipnótica)
   const clampCps = (cps) => Math.max(0.5, Math.min(cps, MAX_CPS));
   window.setCps  = () => {};   // ignorado: el track no decide el tempo
   window.setcps  = window.setCps;
@@ -120,9 +120,33 @@ function sanitize(code: string): string {
     .replace(/\bset[Cc]p[sm]\(\s*[\d.]+\s*\)\s*;?/g, '');
 }
 
+// Garantiza que toda línea melódica (note(...) / n(...)) tenga un sonido. Si
+// una respuesta llega truncada (rate limit) y falta el .s("..."), Strudel
+// leería el número de nota como nombre de sonido → "fall back to triangle".
+function ensureSound(code: string): string {
+  return code.split('\n').map(line => {
+    const isMelodic = /\b(?:note|n)\s*\(/.test(line);
+    const hasSound  = /\.(?:s|sound)\s*\(/.test(line);
+    if (!isMelodic || hasSound) return line;
+    if (line.includes('.play(')) return line.replace('.play(', '.s("sawtooth").play(');
+    // Inserta el sonido antes de la coma/cierre final de la línea del stack.
+    return line.replace(/(\))(\s*,?\s*)$/, '$1.s("sawtooth")$2');
+  }).join('\n');
+}
+
+/** ¿El texto recibido parece código ejecutable y completo (no error/truncado)? */
+export function looksLikeRunnableCode(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.startsWith('{') || t.startsWith('//') && t.length < 30) return false;
+  if (t.includes('"error"') || t.toLowerCase().includes('rate_limit')) return false;
+  // Debe tener al menos una salida real de audio o visual y paréntesis balanceados.
+  const balanced = (t.match(/\(/g)?.length ?? 0) === (t.match(/\)/g)?.length ?? 0);
+  return (t.includes('.play(') || t.includes('.out(')) && balanced;
+}
+
 export function evaluateCode(codeStr: string, trackId: string = 'A') {
   (window as any).__currentTrack = trackId;
-  let clean = sanitize(codeStr);
+  const clean = ensureSound(sanitize(codeStr));
   let codeToRun = clean;
   try {
     const t = transpiler(clean, { wrapAsync: false, addReturn: false });
