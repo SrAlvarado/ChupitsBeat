@@ -69,15 +69,30 @@ export async function initAudioEngine() {
     };
   }
 
-  const MAX_CPS = 2.0; // 120 BPM tope
-  window.setCps  = (cps) => replInstance.setCps(Math.min(cps, MAX_CPS));
+  // El tempo lo fija la SESIÓN (el Director), no cada track. Los generadores
+  // ya no llaman a setCps (se elimina en sanitize). Mantenemos los globales
+  // como no-ops seguros por si llega código antiguo, pero el tempo real lo
+  // controla setSessionTempo().
+  const MAX_CPS = 2.7; // ~160 BPM, techo de seguridad (hard techno cabe)
+  const clampCps = (cps) => Math.max(0.5, Math.min(cps, MAX_CPS));
+  window.setCps  = () => {};   // ignorado: el track no decide el tempo
   window.setcps  = window.setCps;
-  window.setCpm  = (cpm) => replInstance.setCps(Math.min(cpm / 60, MAX_CPS));
+  window.setCpm  = () => {};
   window.setcpm  = window.setCpm;
   window.hush    = () => { trackPatterns.clear(); replInstance.stop(); };
 
+  // API de tempo de sesión (solo App/Director la usa)
+  (window as any).__clampCps = clampCps;
+
   isAudioInitialized = true;
   console.log('[Chupits] Motor listo — samples: bd, sd, hh, oh, cp, RolandTR909...');
+}
+
+/** El Director fija el tempo de toda la sesión (un único reloj). */
+export function setSessionTempo(bpm: number) {
+  if (!replInstance) return;
+  const cps = (window as any).__clampCps?.(bpm / 60) ?? bpm / 60;
+  replInstance.setCps(cps);
 }
 
 function sanitize(code: string): string {
@@ -93,12 +108,16 @@ function sanitize(code: string): string {
     .replace(/\.f\(\s*["']bpf["']\s*,\s*([^)]+)\)/g, '.bpf($1)')
     .replace(/\.filter\(\s*["']lpf["']\s*,\s*([^)]+)\)/g, '.lpf($1)')
     .replace(/\.filter\(\s*["']hpf["']\s*,\s*([^)]+)\)/g, '.hpf($1)')
+    // Sonido numérico sin comillas: .s(194) → sawtooth
     .replace(/\.s\(\s*\d+\s*\)/g, '.s("sawtooth")')
+    // Sonido numérico ENTRECOMILLADO: la IA puso números donde va el nombre
+    // del sonido — ej. .s("194") o .s("54 104 109"). Strudel lo trata como
+    // nombre de sample inexistente y cae a triangle. Lo forzamos a sawtooth.
+    .replace(/\.(?:s|sound)\(\s*"[\s\d.~<>]*\d[\s\d.~<>]*"\s*\)/g, '.s("sawtooth")')
     .replace(/\.freq\(([^)]+)\)(?!\s*\.s\()/g, '.freq($1).s("sine")')
-    // Clamp setCps/setcps to max 2.0 (120 BPM)
-    .replace(/\bset[Cc]ps\(\s*([\d.]+)\s*\)/g, (_, n) =>
-      `setCps(${Math.min(parseFloat(n), 2.0)})`
-    );
+    // El tempo lo controla la sesión: elimina cualquier setCps/setCpm que
+    // genere la IA para que no pelee por el reloj global.
+    .replace(/\bset[Cc]p[sm]\(\s*[\d.]+\s*\)\s*;?/g, '');
 }
 
 export function evaluateCode(codeStr: string, trackId: string = 'A') {

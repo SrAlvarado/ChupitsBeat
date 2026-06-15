@@ -17,7 +17,39 @@ Deno.serve(async (req: Request) => {
       throw new Error("GROQ_API_KEY environment variable is missing.");
     }
 
-    const { prompt, currentEditorState } = await req.json();
+    const body = await req.json();
+    const { prompt, currentEditorState, directive, otherTrackCode, previousCode, guidance } = body;
+
+    // ── Bloque de directrices del Director (sesión coherente) ──────────────
+    // Si llega `directive`, el Director gobierna la sesión: tonalidad, BPM,
+    // fase del set y presupuesto de densidad están FIJADOS. El generador solo
+    // rellena su rol dentro de esas reglas y en coherencia con el otro track.
+    const directorBlock = directive ? `
+  ══════════════════════════════════════════
+  DIRECCIÓN DE SESIÓN (OBLIGATORIO — lo fija el Director, NO lo cambies)
+  ══════════════════════════════════════════
+  Género:   ${directive.genre} — ${directive.vibe}
+  Tu rol:   ${directive.role === 'drums' ? 'TRACK A — RITMO (kick + percusión)' : 'TRACK B — BAJO + MELODÍA'}
+  Fase del set: ${directive.phase} → energía ${directive.energy}
+  Tonalidad BLOQUEADA: ${directive.key}  (TODA nota debe pertenecer a esta tonalidad)
+  Sonidos a usar (paleta): ${directive.palette.join(', ')}
+  Carácter: ${directive.soundHint}
+
+  PRESUPUESTO DE DENSIDAD (NO superar — esto evita la "pared de sonido"):
+  - Máximo ${directive.budget.maxLayers} capas dentro del stack.
+  - Máximo ~${directive.budget.maxEventsPerCycle} eventos sonoros por ciclo.
+  - ${directive.budget.note}
+
+  COHERENCIA — esto es lo que está sonando AHORA en el otro track. Encájate con
+  ello (no dupliques sus golpes, complementa, respeta su tonalidad y groove):
+  --- OTRO TRACK ---
+  ${otherTrackCode || '(silencio)'}
+  ------------------
+  ${previousCode ? `Esto es lo que tú tocabas hasta ahora. EVOLUCIONA a partir de ello (no repitas idéntico, varía 1-2 elementos):\n  --- TU TRACK ANTERIOR ---\n  ${previousCode}\n  -------------------------` : ''}
+
+  REGLAS DE TEMPO: NO escribas setCps ni setCpm. El tempo lo fija la sesión (${directive.bpm} BPM). Solo emites el stack(...).play() de TU rol.
+  VISUAL sugerido: ${directive.visual}
+  ` : '';
 
     const systemInstruction = `Eres un experto en live coding audiovisual autónomo llamado "Chupits Beat", especializado en Hard Techno, Schranz e Industrial.
   Tu objetivo es generar código válido de Strudel (audio) y Hydra (visuales) basado en el estilo que pide el DJ.
@@ -26,10 +58,9 @@ Deno.serve(async (req: Request) => {
   ══════════════════════════════════════════
   TEMPO — REGLA ABSOLUTA
   ══════════════════════════════════════════
-  El tempo MÁXIMO es 120 BPM = setCps(2.0).
-  NUNCA uses un valor mayor que 2.0 en setCps().
-  Rango permitido: setCps(1.0) [60 BPM] hasta setCps(2.0) [120 BPM].
-  Recomendado para techno: setCps(1.8) [108 BPM] o setCps(2.0) [120 BPM].
+  El tempo lo fija la SESIÓN (el Director), NO tú.
+  NUNCA escribas setCps() ni setCpm() — se ignoran y rompen la coherencia.
+  Tu código es solo el stack(...).play() de tu rol, sin tocar el reloj.
 
   ══════════════════════════════════════════
   CONSTRUCCIÓN DE RITMO (inspirado en Sonic Pi)
@@ -95,21 +126,20 @@ Deno.serve(async (req: Request) => {
   3. note() SIEMPRE usa nombres de nota como "c1", "eb2", "f#3" — JAMÁS números MIDI
   4. Efectos válidos: .gain(0-1), .lpf(hz), .hpf(hz), .speed(x), .delay(0-1), .room(0-1), .pan(-1/1), .attack(s), .release(s), .distort(0-1)
   5. NUNCA uses .f(), .filter(), ni ningún método que no esté en la lista de efectos
-  6. setCps() MÁXIMO 2.0 — nunca más alto
+  6. NUNCA escribas setCps() ni setCpm() — el tempo lo fija la sesión
+  7. Si hay DIRECCIÓN DE SESIÓN abajo, respétala por encima de todo: tonalidad, paleta, rol y presupuesto de densidad son OBLIGATORIOS
 
   ══════════════════════════════════════════
   EJEMPLO HARD TECHNO 120 BPM CORRECTO
   ══════════════════════════════════════════
 
-  // Audio: Hard Techno 120 BPM con groove euclídeo
-  setCps(2.0);
+  // Audio: SOLO tu rol. NO escribas setCps (lo fija la sesión).
+  // Ejemplo de TRACK A (ritmo) en fase peak con groove euclídeo:
   stack(
     s("bd:0*4").gain("<1.0 0.85 0.9 0.8>"),
     s("hh:0").euclid(7,16).gain(0.4).pan("<-0.3 0.3>"),
     s("oh:0").euclid(3,8).gain(0.55),
-    s("sd:0").struct("~ x ~ x").gain("<0.7 0.65>"),
-    s("perc:0").euclid(5,16).gain(0.5).speed("<1 1.5>"),
-    note("<c1 ~ eb1 ~> <g1 ~ bb1 ~>").s("sawtooth").lpf("<280 350>").gain(0.8).release(0.05)
+    s("sd:0").struct("~ x ~ x").gain("<0.7 0.65>")
   ).play();
 
   // Visuales: industrial oscuro
@@ -122,8 +152,9 @@ Deno.serve(async (req: Request) => {
   - Combina con .blend(), .add(), .layer(), .diff(), .modulate()
   - Para techno duro: colores rojos/naranjas, movimiento agresivo, alto contraste
 
+  ${directorBlock}
   Estado actual del editor:
-  ${currentEditorState}`;
+  ${currentEditorState || ''}`;
 
     // Request stream from Groq using standard fetch (OpenAI compatible endpoint)
     const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -136,7 +167,12 @@ Deno.serve(async (req: Request) => {
         model: "llama-3.3-70b-versatile", // Modelo actual y soportado por Groq
         messages: [
           { role: "system", content: systemInstruction },
-          { role: "user", content: `Directriz del DJ (Vibe/Estilo): ${prompt}` }
+          {
+            role: "user",
+            content: directive
+              ? `Genera el código de TU ROL (${directive.role === 'drums' ? 'TRACK A — ritmo' : 'TRACK B — bajo/melodía'}) para ${directive.genre}, fase ${directive.phase}, en la tonalidad ${directive.key}, respetando el presupuesto de densidad y en coherencia con el otro track.${guidance ? ` Indicación extra del DJ: ${guidance}` : ''}`
+              : `Directriz del DJ (Vibe/Estilo): ${prompt}`,
+          }
         ],
         temperature: 0.7,
         stream: true
