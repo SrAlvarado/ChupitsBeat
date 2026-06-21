@@ -3,16 +3,20 @@ import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { EditorView, keymap } from '@codemirror/view';
 import './App.css';
-import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo } from './audioVisualEngine';
+import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo, applyVisual, awaitNextPhrase } from './audioVisualEngine';
 import {
-  GENRES, startSession, advanceSession, buildDirective,
-  type Session, type TrackRole,
+  GENRES, startSession, advanceSession, buildDirective, specToCode,
+  type Session, type TrackRole, type TrackSpec, type Phase,
 } from './musicKnowledge';
 
 const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
-const AUTO_INTERVAL = 28000; // ms entre generaciones en modo auto
+const PHRASE_CYCLES = 8; // frase musical: regenera cada 8 ciclos (sincronía por compás)
 
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+// Intensidad visual base por fase del set (el FFT del audio modula el resto).
+const PHASE_INTENSITY: Record<Phase, number> = {
+  intro: 0.2, build: 0.5, peak: 0.95, breakdown: 0.4,
+};
+const applySessionVisual = (s: Session) => applyVisual(s.genre.id, PHASE_INTENSITY[s.phase]);
 
 const TRACK_A_DEFAULT = `// TRACK A — Ritmo
 stack(
@@ -75,46 +79,61 @@ export default function App() {
     const setLoading = trackId === 'A' ? setStreamingA : setStreamingB;
 
     const directive = opts.sess && opts.role ? buildDirective(opts.sess, opts.role) : undefined;
+    if (!directive) return; // la sesión siempre está dirigida por el Director
     const otherTrackCode = trackId === 'A' ? codeB.current : codeA.current;
     const previousCode   = trackId === 'A' ? codeA.current : codeB.current;
 
     setLoading(true);
-    setCode(`// [IA generando Track ${trackId}...]`);
+    setCode(`// [IA generando Track ${trackId}…]`);
 
-    try {
+    // La IA devuelve JSON; el cliente lo valida y ensambla a Strudel seguro.
+    const callAI = async (repair?: { spec: unknown; error: string }) => {
       const res = await fetch(FUNCTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: opts.prompt ?? '',
-          currentEditorState: '',
-          directive,
-          otherTrackCode,
-          previousCode,
-          guidance: opts.guidance,
+          directive, otherTrackCode, previousCode,
+          guidance: opts.guidance, prompt: opts.prompt ?? '', repair,
         }),
         signal,
       });
-      if (!res.ok || !res.body) throw new Error('Error IA');
+      if (!res.ok) throw new Error(`Error IA ${res.status}`);
+      return res.json() as Promise<{ spec?: TrackSpec; error?: string; raw?: string }>;
+    };
 
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let full = '';
-      setCode('');
+    // Ensambla el JSON → código Strudel; '' si la validación lo rechaza.
+    let lastErr = '';
+    const assemble = (spec?: TrackSpec): string => {
+      if (!spec) return '';
+      try { return specToCode(spec, directive); }
+      catch (e) { lastErr = (e as Error).message; return ''; }
+    };
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        full += chunk;
-        setCode(prev => prev + chunk);
+    try {
+      let json = await callAI();
+      let code = assemble(json.spec);
+
+      // Auto-corrección: si el JSON es inválido o no ensambla, reenvía a la IA
+      // el spec infractor + el error para que devuelva una versión corregida.
+      if (!code && !signal?.aborted) {
+        console.warn(`[IA Track ${trackId}] inválido (${json.error || lastErr}); pidiendo auto-corrección…`);
+        json = await callAI({ spec: json.spec ?? json.raw ?? null, error: json.error || lastErr || 'JSON no válido' });
+        code = assemble(json.spec);
       }
 
-      if (!signal?.aborted) evaluateCode(full, trackId);
+      if (signal?.aborted) return;
+
+      if (code) {
+        setCode(code);
+        evaluateCode(code, trackId);
+      } else {
+        console.warn(`[IA Track ${trackId}] sigue inválido tras auto-corrección; patrón anterior intacto`);
+        setCode(`// ⚠️ IA no devolvió un patrón válido — se mantiene el anterior\n${previousCode}`);
+      }
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
         console.error(`[IA Track ${trackId}]`, err);
-        setCode(`// Error IA en Track ${trackId}`);
+        setCode(`// Error IA en Track ${trackId}\n${previousCode}`);
       }
     } finally {
       setLoading(false);
@@ -124,12 +143,13 @@ export default function App() {
   // ── Loop autónomo dirigido por el Director ─────────────────────────────────
   // Hace una sesión completa solo: fija género/BPM/tonalidad, arranca ambos
   // tracks coherentes y va avanzando la fase del set (intro→build→peak→break),
-  // regenerando un track cada AUTO_INTERVAL en coherencia con lo que suena.
+  // regenerando un track en cada frontera de frase, coherente con lo que suena.
   const runAutoLoop = useCallback(async (signal: AbortSignal) => {
     // 1) El Director abre la sesión a partir del estilo (o el default)
     let sess = startSession(styleRef.current);
     setSession(sess);
     setSessionTempo(sess.bpm);
+    applySessionVisual(sess);
 
     // 2) Arranca los dos tracks coherentes en paralelo
     await Promise.all([
@@ -137,13 +157,15 @@ export default function App() {
       streamToTrack('B', { sess, role: 'bassMelody' }, signal),
     ]);
 
-    // 3) Loop: avanza la fase del set y regenera un track alternando
+    // 3) Loop: en cada frontera de frase avanza la fase y regenera un track
+    //    alternando, sincronizado con el reloj de Strudel (no un sleep fijo).
     while (!signal.aborted && isRunRef.current) {
-      await sleep(AUTO_INTERVAL);
+      await awaitNextPhrase(PHRASE_CYCLES, signal);
       if (signal.aborted) break;
 
       sess = advanceSession(sess);
       setSession(sess);
+      applySessionVisual(sess);
 
       const track: 'A' | 'B' = sess.generation % 2 === 0 ? 'A' : 'B';
       const role: TrackRole  = track === 'A' ? 'drums' : 'bassMelody';
@@ -174,6 +196,7 @@ export default function App() {
       const sess = startSession(styleRef.current || style);
       setSession(sess);
       setSessionTempo(sess.bpm);
+      applySessionVisual(sess);
       setIsRunning(true);
     } catch (err) {
       console.error('Error al iniciar:', err);
