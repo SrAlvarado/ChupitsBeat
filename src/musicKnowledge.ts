@@ -249,3 +249,136 @@ export function buildDirective(s: Session, role: TrackRole): Directive {
     visual: s.genre.visual,
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// TRANSPILADOR JSON → STRUDEL  (Decodificación restringida por gramática)
+// ────────────────────────────────────────────────────────────────────────
+// La IA YA NO escribe JavaScript: emite un JSON con un esquema cerrado y el
+// CLIENTE lo ensambla aquí de forma determinista. Cualquier valor fuera de
+// rango o sonido inexistente se descarta/satura en silencio. Resultado: una
+// alucinación del modelo nunca puede romper la sintaxis ni silenciar la pista.
+// ════════════════════════════════════════════════════════════════════════
+
+/** Una capa dentro del stack de un track (percusión o melódica). */
+export interface LayerSpec {
+  /** Nombre del sonido: "bd","hh","RolandTR909_bd" (perc) o "sawtooth" (synth). */
+  sound?: string;
+  /** Notas con NOMBRE para capas melódicas: "c2 eb2 g2 bb2". */
+  note?: string;
+  /** Sufijo rítmico mini-notación para percusión: "*4", " ~ x ~". */
+  rhythm?: string;
+  /** Ritmo euclídeo [pulsos, pasos]: [7,16]. */
+  euclid?: [number, number];
+  /** Estructura mini-notación: "~ x ~ x". */
+  struct?: string;
+  gain?: number | string; lpf?: number; hpf?: number;
+  delay?: number; room?: number; speed?: number;
+  attack?: number; release?: number; distort?: number;
+  /** Paneo: número (-1..1) o patrón mini "<-0.3 0.3>". */
+  pan?: number | string;
+}
+
+/** Lo que devuelve la IA: el contenido de UN track. */
+export interface TrackSpec {
+  layers: LayerSpec[];
+}
+
+// Sonidos de percusión reconocidos por el motor (base + cajas de ritmo).
+const BASE_DRUMS = new Set([
+  'bd', 'sd', 'sn', 'hh', 'oh', 'ch', 'cp', 'cr', 'rim', 'perc', 'rd',
+  'lt', 'mt', 'ht', 'sh', 'cb', 'tb', 'click', 'clap',
+]);
+const SYNTH_SOUNDS = new Set(['sawtooth', 'square', 'triangle', 'sine']);
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && isFinite(v) ? v : undefined;
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** Sanea un nombre de sonido a [A-Za-z0-9_:] (sin comillas ni paréntesis). */
+function cleanSound(s: unknown): string {
+  return String(s ?? '').replace(/[^A-Za-z0-9_:]/g, '').slice(0, 32);
+}
+/** ¿Es un sonido de percusión que el motor sabe reproducir? */
+function isKnownDrum(s: string): boolean {
+  const base = s.split(/[_:]/)[0];
+  return BASE_DRUMS.has(base) || /^Roland/.test(s);
+}
+/** Sanea una cadena mini-notación: solo caracteres rítmicos seguros. */
+function cleanPattern(s: unknown): string {
+  return String(s ?? '').replace(/[^A-Za-z0-9 ~<>?.,*/!@()[\]:-]/g, '').slice(0, 120);
+}
+/** Sanea una cadena de notas: solo nombres de nota y estructura mini. */
+function cleanNotes(s: unknown): string {
+  const out = String(s ?? '').replace(/[^a-gA-G#0-9 ~<>?.,*/!@()[\]:_-]/g, '').slice(0, 120).trim();
+  // Debe contener al menos una letra de nota (a-g); si no, no es válido.
+  return /[a-gA-G]/.test(out) ? out : '';
+}
+
+/** Cadena de efectos comunes, validada y recortada a rangos seguros. */
+function fxChain(l: LayerSpec): string {
+  let fx = '';
+  // gain admite número (0..1) o patrón de acentos "<1.0 0.85 0.9 0.8>".
+  if (typeof l.gain === 'number' && isFinite(l.gain)) fx += `.gain(${clamp(l.gain, 0, 1).toFixed(2)})`;
+  else if (typeof l.gain === 'string') { const g = cleanPattern(l.gain); if (g) fx += `.gain("${g}")`; }
+  const lpf = num(l.lpf);     if (lpf !== undefined) fx += `.lpf(${Math.round(clamp(lpf, 20, 20000))})`;
+  const hpf = num(l.hpf);     if (hpf !== undefined) fx += `.hpf(${Math.round(clamp(hpf, 20, 20000))})`;
+  const dly = num(l.delay);   if (dly !== undefined) fx += `.delay(${clamp(dly, 0, 1).toFixed(2)})`;
+  const room = num(l.room);   if (room !== undefined) fx += `.room(${clamp(room, 0, 1).toFixed(2)})`;
+  const spd = num(l.speed);   if (spd !== undefined) fx += `.speed(${clamp(spd, 0.25, 4).toFixed(2)})`;
+  const atk = num(l.attack);  if (atk !== undefined) fx += `.attack(${clamp(atk, 0, 2).toFixed(3)})`;
+  const rel = num(l.release); if (rel !== undefined) fx += `.release(${clamp(rel, 0, 3).toFixed(3)})`;
+  const dist = num(l.distort);if (dist !== undefined) fx += `.distort(${clamp(dist, 0, 1).toFixed(2)})`;
+  if (typeof l.pan === 'number' && isFinite(l.pan)) fx += `.pan(${clamp(l.pan, -1, 1).toFixed(2)})`;
+  else if (typeof l.pan === 'string') { const p = cleanPattern(l.pan); if (p) fx += `.pan("${p}")`; }
+  return fx;
+}
+
+/** Convierte UNA capa en una expresión Strudel, o null si no es válida. */
+function layerToCode(l: LayerSpec): string | null {
+  // ── Capa melódica: lleva `note` ──────────────────────────────────────
+  if (l.note !== undefined) {
+    const notes = cleanNotes(l.note);
+    if (!notes) return null;
+    let snd = cleanSound(l.sound).toLowerCase();
+    if (!SYNTH_SOUNDS.has(snd)) snd = 'sawtooth';
+    return `note("${notes}").s("${snd}")${fxChain(l)}`;
+  }
+  // ── Capa de percusión: lleva `sound` ─────────────────────────────────
+  const snd = cleanSound(l.sound);
+  if (!snd || !isKnownDrum(snd)) return null;
+  const head = l.rhythm ? `s("${snd}${cleanPattern(l.rhythm)}")` : `s("${snd}")`;
+  let mods = '';
+  if (Array.isArray(l.euclid) && l.euclid.length === 2) {
+    const n = num(l.euclid[0]); const m = num(l.euclid[1]);
+    if (n !== undefined && m !== undefined) {
+      mods += `.euclid(${clamp(Math.round(n), 1, 64)},${clamp(Math.round(m), 1, 64)})`;
+    }
+  }
+  if (typeof l.struct === 'string') {
+    const st = cleanPattern(l.struct);
+    if (st) mods += `.struct("${st}")`;
+  }
+  return `${head}${mods}${fxChain(l)}`;
+}
+
+/**
+ * Ensambla el TrackSpec de la IA en código Strudel ejecutable y seguro.
+ * Respeta el presupuesto de densidad del Director (recorta capas sobrantes).
+ * Lanza si no queda ninguna capa válida (→ el llamador conserva el patrón
+ * anterior y/o pide auto-corrección a la IA).
+ */
+export function specToCode(spec: TrackSpec, dir: Directive): string {
+  if (!spec || !Array.isArray(spec.layers)) {
+    throw new Error('TrackSpec sin array `layers`');
+  }
+  const maxLayers = dir.budget.maxLayers;
+  const lines = spec.layers
+    .slice(0, Math.max(1, maxLayers))
+    .map(layerToCode)
+    .filter((x): x is string => !!x);
+
+  if (lines.length === 0) throw new Error('Ninguna capa válida tras la validación');
+
+  const body = lines.map(l => `  ${l}`).join(',\n');
+  return `stack(\n${body}\n).play();`;
+}
