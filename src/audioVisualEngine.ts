@@ -15,6 +15,9 @@ let replInstance = null;
 // ID del analizador FFT al que enrutamos TODA la mezcla (visuales reactivos).
 const MASTER_ANALYZER = 1;
 const FFT_PARAM = 4; // fftSize = 2^(4+5) = 512 → 256 bins
+// Gain maestro: deja headroom para que la suma de los 2 tracks (varias capas
+// cada uno) NO recorte en el destino de Web Audio (que no tiene limitador).
+const MASTER_GAIN = 0.55;
 
 // Patrón por track. El scheduler siempre recibe stack(A, B).
 const trackPatterns: Map<string, unknown> = new Map();
@@ -27,6 +30,13 @@ async function rebuildScheduler() {
   let combined = patterns.length === 1
     ? patterns[0]
     : strudelCore.stack(...patterns);
+
+  // Gain maestro para evitar saturación al sumar ambos tracks.
+  try {
+    if (typeof (combined as any).gain === 'function') {
+      combined = (combined as any).gain(MASTER_GAIN);
+    }
+  } catch (e) { console.warn('[master gain] no aplicado:', e); }
 
   // Enruta la mezcla completa a un analizador FFT (envío paralelo, no altera
   // el audio). Así los visuales de Hydra reaccionan al sonido de Strudel, NO
