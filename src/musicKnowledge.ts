@@ -317,8 +317,8 @@ function cleanNotes(s: unknown): string {
 /** Cadena de efectos comunes, validada y recortada a rangos seguros. */
 function fxChain(l: LayerSpec): string {
   let fx = '';
-  // gain admite número (0..1) o patrón de acentos "<1.0 0.85 0.9 0.8>".
-  if (typeof l.gain === 'number' && isFinite(l.gain)) fx += `.gain(${clamp(l.gain, 0, 1).toFixed(2)})`;
+  // gain admite número (tope 0.9 para dejar headroom) o patrón de acentos.
+  if (typeof l.gain === 'number' && isFinite(l.gain)) fx += `.gain(${clamp(l.gain, 0, 0.9).toFixed(2)})`;
   else if (typeof l.gain === 'string') { const g = cleanPattern(l.gain); if (g) fx += `.gain("${g}")`; }
   const lpf = num(l.lpf);     if (lpf !== undefined) fx += `.lpf(${Math.round(clamp(lpf, 20, 20000))})`;
   const hpf = num(l.hpf);     if (hpf !== undefined) fx += `.hpf(${Math.round(clamp(hpf, 20, 20000))})`;
@@ -327,7 +327,8 @@ function fxChain(l: LayerSpec): string {
   const spd = num(l.speed);   if (spd !== undefined) fx += `.speed(${clamp(spd, 0.25, 4).toFixed(2)})`;
   const atk = num(l.attack);  if (atk !== undefined) fx += `.attack(${clamp(atk, 0, 2).toFixed(3)})`;
   const rel = num(l.release); if (rel !== undefined) fx += `.release(${clamp(rel, 0, 3).toFixed(3)})`;
-  const dist = num(l.distort);if (dist !== undefined) fx += `.distort(${clamp(dist, 0, 1).toFixed(2)})`;
+  // distort acotado a rango musical: 0.8 saturaba la pista entera. Tope 0.35.
+  const dist = num(l.distort);if (dist !== undefined) fx += `.distort(${clamp(dist, 0, 0.35).toFixed(2)})`;
   if (typeof l.pan === 'number' && isFinite(l.pan)) fx += `.pan(${clamp(l.pan, -1, 1).toFixed(2)})`;
   else if (typeof l.pan === 'string') { const p = cleanPattern(l.pan); if (p) fx += `.pan("${p}")`; }
   return fx;
