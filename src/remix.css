@@ -154,3 +154,5 @@
 .bpm-slider { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: rgba(255,255,255,0.7); }
 .bpm-slider b { color: #ff8a3d; min-width: 32px; }
 .bpm-slider input { flex: 1; accent-color: #ff2d6b; }
+.vocals-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: rgba(255,255,255,0.75); cursor: pointer; }
+.vocals-toggle input { accent-color: #ff2d6b; width: 16px; height: 16px; }

@@ -72,10 +72,11 @@ export default function Remix() {
   // ── Base de schranz (Fase 3a) ──
   const [targetBpm, setTargetBpm] = useState(150);
   const [basePlaying, setBasePlaying] = useState(false);
+  const [vocalsOn, setVocalsOn] = useState(true);
   const player = useRef<RemixPlayer | null>(null);
   useEffect(() => () => { player.current?.dispose(); }, []);
 
-  const toggleBase = useCallback(() => {
+  const toggleBase = useCallback(async () => {
     if (basePlaying) {
       player.current?.stop();
       setBasePlaying(false);
@@ -85,9 +86,27 @@ export default function Remix() {
     const params = { bpm: targetBpm, rootFreq, intensity: 0.75 };
     if (!player.current) player.current = new RemixPlayer(params);
     else player.current.setParams(params);
+    // Carga la voz original (stem) y la activa si procede.
+    player.current.setVocals(vocalsOn);
+    if (vocalsOn && stems.vocals) {
+      try { await player.current.loadVocals(BACKEND + stems.vocals, analysis?.bpm ?? targetBpm); }
+      catch (e) { console.warn('[vocals]', e); }
+    }
     player.current.start();
     setBasePlaying(true);
-  }, [basePlaying, analysis, targetBpm]);
+  }, [basePlaying, analysis, targetBpm, vocalsOn, stems]);
+
+  const toggleVocals = useCallback((on: boolean) => {
+    setVocalsOn(on);
+    const pl = player.current;
+    if (!pl) return;
+    if (on && stems.vocals) {
+      pl.loadVocals(BACKEND + stems.vocals, analysis?.bpm ?? targetBpm)
+        .then(() => pl.setVocals(true)).catch(e => console.warn('[vocals]', e));
+    } else {
+      pl.setVocals(false);
+    }
+  }, [stems, analysis, targetBpm]);
 
   // refleja el BPM en vivo si se está tocando
   useEffect(() => { player.current?.setParams({ bpm: targetBpm }); }, [targetBpm]);
@@ -246,7 +265,12 @@ export default function Remix() {
                 <input type="range" min={130} max={170} value={targetBpm}
                   onChange={e => setTargetBpm(Number(e.target.value))} />
               </label>
-              <p className="muted">Fase 3a — base sintetizada (kick distorsionado, hats offbeat, clap, bajo con sidechain). Siguiente: encajar la voz y renderizar.</p>
+              <label className="vocals-toggle">
+                <input type="checkbox" checked={vocalsOn} disabled={!stems.vocals}
+                  onChange={e => toggleVocals(e.target.checked)} />
+                🎤 Incluir voz original (time-stretch al BPM)
+              </label>
+              <p className="muted">Fase 3b — base + voz encajada al tempo (tono preservado). Siguiente: arreglo (intro/drop/breakdown) y render descargable.</p>
             </div>
           </div>
         )}

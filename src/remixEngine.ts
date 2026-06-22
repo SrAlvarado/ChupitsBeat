@@ -1,3 +1,5 @@
+import { PitchShifter } from 'soundtouchjs';
+
 // ════════════════════════════════════════════════════════════════════════
 // Remix Engine — secuenciador de schranz en Web Audio (autocontenido).
 // Sintetiza kick (pitch-drop + distorsión), hats, clap y bajo, en una rejilla
@@ -141,6 +143,12 @@ export class RemixPlayer {
   private params: BaseParams;
   playing = false;
 
+  // Voz original (stem) encajada al BPM con time-stretch (preserva el tono).
+  private vocalsBuf: AudioBuffer | null = null;
+  private vocalsBpm = 0;
+  private shifter: { tempo: number; pitchSemitones: number; connect: (n: AudioNode) => void; disconnect: () => void } | null = null;
+  vocalsOn = false;
+
   constructor(params: BaseParams) {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new AC();
@@ -150,7 +158,39 @@ export class RemixPlayer {
     this.params = params;
   }
 
-  setParams(p: Partial<BaseParams>) { this.params = { ...this.params, ...p }; }
+  setParams(p: Partial<BaseParams>) {
+    this.params = { ...this.params, ...p };
+    if (this.shifter && this.vocalsBpm) this.shifter.tempo = this.params.bpm / this.vocalsBpm;
+  }
+
+  /** Carga el stem de voz/melodía en el contexto del player. */
+  async loadVocals(url: string, originalBpm: number) {
+    const ab = await (await fetch(url)).arrayBuffer();
+    this.vocalsBuf = await this.ctx.decodeAudioData(ab);
+    this.vocalsBpm = originalBpm > 0 ? originalBpm : this.params.bpm;
+  }
+
+  private startVocals() {
+    if (!this.vocalsBuf || this.shifter) return;
+    const s = new PitchShifter(this.ctx, this.vocalsBuf, 4096) as {
+      tempo: number; pitchSemitones: number; connect: (n: AudioNode) => void; disconnect: () => void;
+    };
+    s.tempo = this.params.bpm / (this.vocalsBpm || this.params.bpm); // stretch al BPM objetivo
+    s.pitchSemitones = 0; // la base ya está en el tono del tema → sin pitch-shift
+    s.connect(this.master);
+    this.shifter = s;
+  }
+
+  private stopVocals() {
+    if (this.shifter) { try { this.shifter.disconnect(); } catch { /* noop */ } this.shifter = null; }
+  }
+
+  /** Activa/desactiva la voz original sobre la base. */
+  setVocals(on: boolean) {
+    this.vocalsOn = on;
+    if (!this.playing) return;
+    if (on) this.startVocals(); else this.stopVocals();
+  }
 
   start() {
     if (this.playing) return;
@@ -167,12 +207,14 @@ export class RemixPlayer {
       }
     };
     this.timer = window.setInterval(tick, lookahead * 1000);
+    if (this.vocalsOn) this.startVocals();
   }
 
   stop() {
     this.playing = false;
     clearInterval(this.timer);
     this.timer = 0;
+    this.stopVocals();
     this.ctx.suspend();
   }
 
