@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+python-multipart
+yt-dlp
+demucs
+torchcodec   # requerido por torchaudio nuevo para guardar los stems (usa ffmpeg)

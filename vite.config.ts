@@ -5,4 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/ChupitsBeat/',
+  server: {
+    port: 5180,
+    strictPort: true, // no caer a 5173/5174 — deja esos puertos para otra app
+  },
 })
