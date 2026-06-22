@@ -234,3 +234,42 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   0%, 100% { box-shadow: 0 0 6px rgba(255,170,0,0.3); }
   50%       { box-shadow: 0 0 16px rgba(255,170,0,0.7); }
 }
+
+/* ════════ Reconstrucción UI v2 ════════ */
+.brand { display: flex; align-items: center; gap: 1rem; }
+.header h1 span { color: #ff2d6b; margin-left: 2px; }
+
+.genre-select {
+  padding: 0.35rem 0.6rem; font-family: inherit; font-size: 0.78rem;
+  background: rgba(255,255,255,0.06); color: #ddd;
+  border: 1px solid rgba(200,0,255,0.35); border-radius: 4px; outline: none;
+}
+
+/* Colores por rol (label) */
+.track-kick-label { color: #ff3b3b; text-shadow: 0 0 8px rgba(255,59,59,0.5); }
+.track-hats-label { color: #00ffcc; text-shadow: 0 0 8px rgba(0,255,204,0.5); }
+.track-perc-label { color: #ffc24b; text-shadow: 0 0 8px rgba(255,194,75,0.5); }
+.track-bass-label { color: #4b9bff; text-shadow: 0 0 8px rgba(75,155,255,0.5); }
+.track-stab-label { color: #ff44aa; text-shadow: 0 0 8px rgba(255,68,170,0.5); }
+.track-atmo-label { color: #b46bff; text-shadow: 0 0 8px rgba(180,107,255,0.5); }
+
+/* Estados de tarjeta */
+.track-header { cursor: pointer; user-select: none; }
+.track-selected { border-color: rgba(0,255,204,0.7); box-shadow: 0 0 12px rgba(0,255,204,0.25); }
+.track-locked   { border-color: rgba(255,200,0,0.6); }
+.track-locked .code-editor { opacity: 0.78; }
+
+/* Botones de tarjeta */
+.track-controls button {
+  padding: 0.2rem 0.45rem; font-size: 0.8rem; line-height: 1;
+  border-color: rgba(255,255,255,0.2);
+}
+.btn-regen:hover:not(:disabled) { border-color: #00ffcc; color: #00ffcc; }
+.btn-lock.on { border-color: #ffc800; color: #ffc800; background: rgba(255,200,0,0.12); }
+.btn-clear:hover:not(:disabled) { border-color: #ff2255; color: #ff2255; }
+
+/* Footer compacto */
+.footer-label { font-size: 0.8rem; color: #ccc; white-space: nowrap; }
+.footer-label b { color: #00ffcc; }
+.footer-hint { font-size: 0.7rem; color: rgba(255,255,255,0.4); white-space: nowrap; }
+@media (max-width: 800px) { .footer-hint { display: none; } }
