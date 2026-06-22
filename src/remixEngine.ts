@@ -59,13 +59,14 @@ export interface Section {
   acid: boolean;     // gancho ácido/stab
   vocals: boolean;
   lpf: number;       // filtro maestro de la sección (energía)
+  swell?: boolean;   // riser de volumen (sube hasta el drop)
 }
 
 /** Construye un arco de schranz con tempo variable a partir del BPM del drop. */
 export function buildArrangement(dropBpm: number): Section[] {
   return [
     { name: 'intro',     bars: 4,  bpm: dropBpm - 6,  intensity: 0.2, drums: false, bass: false, acid: false, vocals: true, lpf: 2200 },
-    { name: 'build',     bars: 4,  bpm: dropBpm - 2,  intensity: 0.5, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 6000 },
+    { name: 'build',     bars: 4,  bpm: dropBpm - 2,  intensity: 0.5, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 6000, swell: true },
     { name: 'drop',      bars: 16, bpm: dropBpm,      intensity: 0.9, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 20000 },
     { name: 'breakdown', bars: 8,  bpm: dropBpm - 12, intensity: 0.4, drums: false, bass: true,  acid: true,  vocals: true, lpf: 1600 },
     { name: 'drop 2',    bars: 16, bpm: dropBpm + 2,  intensity: 1.0, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 20000 },
@@ -94,7 +95,7 @@ export function scheduleStep(
     osc.type = 'sine';
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
-    g.gain.setValueAtTime(0.72, t); // kick algo más bajo para que respire la voz
+    g.gain.setValueAtTime(0.58, t); // kick más bajo para que respire la voz
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
     osc.connect(sh); sh.connect(g); g.connect(out);
     osc.start(t); osc.stop(t + 0.36);
@@ -108,7 +109,7 @@ export function scheduleStep(
     r.frequency.setValueAtTime(72, t);
     r.frequency.exponentialRampToValueAtTime(40, t + 0.14);
     rg.gain.setValueAtTime(0.0001, t);
-    rg.gain.exponentialRampToValueAtTime(0.5, t + 0.05);
+    rg.gain.exponentialRampToValueAtTime(0.4, t + 0.05);
     rg.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
     r.connect(rsh); rsh.connect(rg); rg.connect(out);
     r.start(t); r.stop(t + 0.52);
@@ -238,6 +239,7 @@ export class RemixPlayer {
   private ctx: AudioContext;
   private master: GainNode;
   private masterLPF: BiquadFilterNode;
+  private baseGain: GainNode;
   private vocalsGain: GainNode;
   private timer = 0;
   private step = 0;
@@ -259,16 +261,20 @@ export class RemixPlayer {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.5;
-    // Filtro maestro para la curva de energía por sección.
+    this.master.gain.value = 0.62;
+    this.master.connect(this.ctx.destination);
+    // Filtro de energía (curva por sección): afecta SOLO a la base.
     this.masterLPF = this.ctx.createBiquadFilter();
     this.masterLPF.type = 'lowpass';
     this.masterLPF.frequency.value = 20000;
-    this.master.connect(this.masterLPF);
-    this.masterLPF.connect(this.ctx.destination);
-    // Bus de voz, un poco por encima para que destaque sobre la base.
+    this.masterLPF.connect(this.master);
+    // Bus de la base (kick/perc/ácido/bajo) con dinámica de volumen por sección.
+    this.baseGain = this.ctx.createGain();
+    this.baseGain.gain.value = 0.5;
+    this.baseGain.connect(this.masterLPF);
+    // Bus de voz: claro (NO pasa por el filtro) y bien por encima de la base.
     this.vocalsGain = this.ctx.createGain();
-    this.vocalsGain.gain.value = 1.3;
+    this.vocalsGain.gain.value = 2.4;
     this.vocalsGain.connect(this.master);
     this.params = params;
   }
@@ -286,6 +292,19 @@ export class RemixPlayer {
     const now = this.ctx.currentTime;
     this.masterLPF.frequency.cancelScheduledValues(now);
     this.masterLPF.frequency.setTargetAtTime(s.lpf, now, 0.3);
+    // Dinámica de volumen de la BASE: degradado por sección + RISER en el build
+    // (sube hasta el "boom" del drop). Es muy característico del schranz.
+    const dur = (s.bars * 240) / s.bpm; // segundos de la sección (1 compás = 240/bpm s)
+    const target = 0.22 + s.intensity * 0.6; // ~0.22 (intro) … ~0.82 (drop)
+    const g = this.baseGain.gain;
+    g.cancelScheduledValues(now);
+    if (s.swell) {
+      g.setValueAtTime(target * 0.2, now);
+      g.linearRampToValueAtTime(target, now + dur * 0.95); // riser hacia el drop
+    } else {
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(target, now + Math.min(0.6, dur * 0.3));
+    }
     // voz on/off según la sección (y el toggle del usuario)
     if (this.playing) {
       if (this.vocalsOn && s.vocals) this.startVocals();
@@ -341,7 +360,7 @@ export class RemixPlayer {
     const lookahead = 0.025, ahead = 0.1;
     const tick = () => {
       while (this.nextTime < this.ctx.currentTime + ahead) {
-        scheduleStep(this.ctx, this.master, this.step, this.nextTime, this.params);
+        scheduleStep(this.ctx, this.baseGain, this.step, this.nextTime, this.params);
         this.nextTime += 60 / this.params.bpm / 4;
         this.step = (this.step + 1) % 16;
         if (this.step === 0) { this.bar++; this.advanceSection(); } // nuevo compás
