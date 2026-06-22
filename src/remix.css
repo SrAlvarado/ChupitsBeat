@@ -156,3 +156,8 @@
 .bpm-slider input { flex: 1; accent-color: #ff2d6b; }
 .vocals-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: rgba(255,255,255,0.75); cursor: pointer; }
 .vocals-toggle input { accent-color: #ff2d6b; width: 16px; height: 16px; }
+.section-now {
+  font-size: 0.82rem; color: #ffd; padding: 8px 12px; border-radius: 8px;
+  background: rgba(255,138,61,0.12); border: 1px solid rgba(255,138,61,0.3);
+}
+.section-now b { color: #ff8a3d; text-transform: uppercase; letter-spacing: 1px; }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import './remix.css';
-import { RemixPlayer, noteToFreq } from './remixEngine';
+import { RemixPlayer, noteToFreq, buildArrangement, type Section } from './remixEngine';
 
 const BACKEND = 'http://localhost:8000';
 
@@ -73,6 +73,7 @@ export default function Remix() {
   const [targetBpm, setTargetBpm] = useState(150);
   const [basePlaying, setBasePlaying] = useState(false);
   const [vocalsOn, setVocalsOn] = useState(true);
+  const [section, setSection] = useState<Section | null>(null);
   const player = useRef<RemixPlayer | null>(null);
   useEffect(() => () => { player.current?.dispose(); }, []);
 
@@ -80,12 +81,15 @@ export default function Remix() {
     if (basePlaying) {
       player.current?.stop();
       setBasePlaying(false);
+      setSection(null);
       return;
     }
     const rootFreq = noteToFreq(analysis?.key || 'a', 1);
     const params = { bpm: targetBpm, rootFreq, intensity: 0.75 };
     if (!player.current) player.current = new RemixPlayer(params);
     else player.current.setParams(params);
+    player.current.onSection = (s) => setSection(s);
+    player.current.setArrangement(buildArrangement(targetBpm)); // journey con BPM variable
     // Carga la voz original (stem) y la activa si procede.
     player.current.setVocals(vocalsOn);
     if (vocalsOn && stems.vocals) {
@@ -108,8 +112,8 @@ export default function Remix() {
     }
   }, [stems, analysis, targetBpm]);
 
-  // refleja el BPM en vivo si se está tocando
-  useEffect(() => { player.current?.setParams({ bpm: targetBpm }); }, [targetBpm]);
+  // al cambiar el BPM (del drop), reconstruye el arreglo con los tempos relativos
+  useEffect(() => { player.current?.setArrangement(buildArrangement(targetBpm)); }, [targetBpm]);
 
   const reset = () => { setStems({}); setAnalysis(null); setSource(null); };
 
@@ -257,9 +261,15 @@ export default function Remix() {
               <div className="base-head">
                 <span>🔥 Base de schranz <small>· tono {analysis?.key ?? 'A'} {analysis?.scale ?? 'minor'}</small></span>
                 <button className={`btn-base ${basePlaying ? 'on' : ''}`} onClick={toggleBase}>
-                  {basePlaying ? '⏹ Parar base' : '▶ Generar base'}
+                  {basePlaying ? '⏹ Parar' : '▶ Generar remix'}
                 </button>
               </div>
+              {basePlaying && section && (
+                <div className="section-now">
+                  Sección: <b>{section.name}</b> · {section.bpm} BPM · energía {Math.round(section.intensity * 100)}%
+                  {!section.drums && ' · sin kick'}
+                </div>
+              )}
               <label className="bpm-slider">
                 BPM objetivo <b>{targetBpm}</b>
                 <input type="range" min={130} max={170} value={targetBpm}
@@ -270,7 +280,7 @@ export default function Remix() {
                   onChange={e => toggleVocals(e.target.checked)} />
                 🎤 Incluir voz original (time-stretch al BPM)
               </label>
-              <p className="muted">Fase 3b — base + voz encajada al tempo (tono preservado). Siguiente: arreglo (intro/drop/breakdown) y render descargable.</p>
+              <p className="muted">Fase 3c — arreglo con <b>BPM variable</b> (intro → build → drop → breakdown → drop 2) y la voz siguiendo el tempo. Siguiente: render descargable.</p>
             </div>
           </div>
         )}

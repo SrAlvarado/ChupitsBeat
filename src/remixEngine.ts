@@ -35,6 +35,31 @@ export interface BaseParams {
   bpm: number;       // tempo objetivo del remix (schranz ~150)
   rootFreq: number;  // frecuencia raíz del bajo (de la tonalidad detectada)
   intensity: number; // 0..1 (densidad/energía → fase del arreglo)
+  drums?: boolean;   // kick+hats+clap activos (false en intro/breakdown)
+  bass?: boolean;    // bajo activo
+}
+
+// ── Arreglo (journey) con tempo variable ──────────────────────────────────
+export interface Section {
+  name: string;
+  bars: number;      // duración en compases
+  bpm: number;       // ¡el tempo varía por sección! (apunte schranz)
+  intensity: number;
+  drums: boolean;
+  bass: boolean;
+  vocals: boolean;
+  lpf: number;       // filtro maestro de la sección (energía)
+}
+
+/** Construye un arco de schranz con tempo variable a partir del BPM del drop. */
+export function buildArrangement(dropBpm: number): Section[] {
+  return [
+    { name: 'intro',     bars: 8,  bpm: dropBpm - 6,  intensity: 0.2, drums: false, bass: false, vocals: true, lpf: 2200 },
+    { name: 'build',     bars: 8,  bpm: dropBpm - 2,  intensity: 0.5, drums: true,  bass: true,  vocals: true, lpf: 6000 },
+    { name: 'drop',      bars: 16, bpm: dropBpm,      intensity: 0.9, drums: true,  bass: true,  vocals: true, lpf: 20000 },
+    { name: 'breakdown', bars: 8,  bpm: dropBpm - 12, intensity: 0.4, drums: false, bass: true,  vocals: true, lpf: 1600 },
+    { name: 'drop 2',    bars: 16, bpm: dropBpm + 2,  intensity: 1.0, drums: true,  bass: true,  vocals: true, lpf: 20000 },
+  ];
 }
 
 /**
@@ -48,9 +73,10 @@ export function scheduleStep(
   const stepDur = 60 / p.bpm / 4; // duración de una semicorchea
   const beat = step % 4 === 0;    // negra (4-on-floor)
   const offbeat = step % 4 === 2; // contratiempo
+  const drums = p.drums !== false;
 
   // ── KICK (cada negra) ──
-  if (beat) {
+  if (drums && beat) {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     const sh = ctx.createWaveShaper();
@@ -65,20 +91,20 @@ export function scheduleStep(
   }
 
   // ── HATS (corcheas) + open hat (offbeat) ──
-  if (step % 2 === 0) {
+  if (drums && step % 2 === 0) {
     hat(ctx, out, t, beat ? 0.18 : 0.30, 0.03); // cerrado
   }
-  if (offbeat) {
+  if (drums && offbeat) {
     hat(ctx, out, t, 0.32, 0.12); // open hat en el contratiempo
   }
 
   // ── CLAP (tiempos 2 y 4) ──
-  if (step === 4 || step === 12) {
+  if (drums && (step === 4 || step === 12)) {
     clap(ctx, out, t, 0.4 + p.intensity * 0.2);
   }
 
   // ── BAJO (rodante, con duck al kick) ──
-  if (p.intensity > 0.25) {
+  if (p.bass !== false) {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     const lp = ctx.createBiquadFilter();
@@ -137,12 +163,17 @@ function clap(ctx: BaseAudioContext, out: AudioNode, t: number, gain: number) {
 export class RemixPlayer {
   private ctx: AudioContext;
   private master: GainNode;
+  private masterLPF: BiquadFilterNode;
   private vocalsGain: GainNode;
   private timer = 0;
   private step = 0;
+  private bar = 0;
+  private secIdx = -1;
+  private arrangement: Section[] | null = null;
   private nextTime = 0;
   private params: BaseParams;
   playing = false;
+  onSection: ((s: Section, index: number) => void) | null = null;
 
   // Voz original (stem) encajada al BPM con time-stretch (preserva el tono).
   private vocalsBuf: AudioBuffer | null = null;
@@ -155,12 +186,38 @@ export class RemixPlayer {
     this.ctx = new AC();
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.5;
-    this.master.connect(this.ctx.destination);
+    // Filtro maestro para la curva de energía por sección.
+    this.masterLPF = this.ctx.createBiquadFilter();
+    this.masterLPF.type = 'lowpass';
+    this.masterLPF.frequency.value = 20000;
+    this.master.connect(this.masterLPF);
+    this.masterLPF.connect(this.ctx.destination);
     // Bus de voz, un poco por encima para que destaque sobre la base.
     this.vocalsGain = this.ctx.createGain();
     this.vocalsGain.gain.value = 1.3;
     this.vocalsGain.connect(this.master);
     this.params = params;
+  }
+
+  /** Define el arreglo (journey) que seguirá el reproductor. */
+  setArrangement(sections: Section[] | null) { this.arrangement = sections; }
+
+  /** Aplica los parámetros de una sección (tempo, energía, elementos, filtro). */
+  private applySection(i: number) {
+    const a = this.arrangement;
+    if (!a || !a[i]) return;
+    const s = a[i];
+    this.secIdx = i;
+    this.setParams({ bpm: s.bpm, intensity: s.intensity, drums: s.drums, bass: s.bass });
+    const now = this.ctx.currentTime;
+    this.masterLPF.frequency.cancelScheduledValues(now);
+    this.masterLPF.frequency.setTargetAtTime(s.lpf, now, 0.3);
+    // voz on/off según la sección (y el toggle del usuario)
+    if (this.playing) {
+      if (this.vocalsOn && s.vocals) this.startVocals();
+      else this.stopVocals();
+    }
+    this.onSection?.(s, i);
   }
 
   setParams(p: Partial<BaseParams>) {
@@ -203,16 +260,33 @@ export class RemixPlayer {
     this.ctx.resume();
     this.nextTime = this.ctx.currentTime + 0.1;
     this.step = 0;
+    this.bar = 0;
+    this.secIdx = -1;
+    if (this.arrangement) this.applySection(0);   // arranca en la 1ª sección
+    else if (this.vocalsOn) this.startVocals();    // modo base simple
     const lookahead = 0.025, ahead = 0.1;
     const tick = () => {
       while (this.nextTime < this.ctx.currentTime + ahead) {
         scheduleStep(this.ctx, this.master, this.step, this.nextTime, this.params);
         this.nextTime += 60 / this.params.bpm / 4;
         this.step = (this.step + 1) % 16;
+        if (this.step === 0) { this.bar++; this.advanceSection(); } // nuevo compás
       }
     };
     this.timer = window.setInterval(tick, lookahead * 1000);
-    if (this.vocalsOn) this.startVocals();
+  }
+
+  private advanceSection() {
+    const a = this.arrangement;
+    if (!a) return;
+    const total = a.reduce((n, s) => n + s.bars, 0);
+    if (this.bar >= total) this.bar = 0; // loop del arreglo
+    let acc = 0, idx = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (this.bar < acc + a[i].bars) { idx = i; break; }
+      acc += a[i].bars;
+    }
+    if (idx !== this.secIdx) this.applySection(idx);
   }
 
   stop() {
