@@ -295,7 +295,7 @@ export class RemixPlayer {
     // Dinámica de volumen de la BASE: degradado por sección + RISER en el build
     // (sube hasta el "boom" del drop). Es muy característico del schranz.
     const dur = (s.bars * 240) / s.bpm; // segundos de la sección (1 compás = 240/bpm s)
-    const target = 0.22 + s.intensity * 0.6; // ~0.22 (intro) … ~0.82 (drop)
+    const target = 0.08 + s.intensity * 0.17; // base de FONDO: ~0.08 (intro) … ~0.25 (drop)
     const g = this.baseGain.gain;
     g.cancelScheduledValues(now);
     if (s.swell) {
@@ -323,6 +323,15 @@ export class RemixPlayer {
     const ab = await (await fetch(url)).arrayBuffer();
     this.vocalsBuf = await this.ctx.decodeAudioData(ab);
     this.vocalsBpm = originalBpm > 0 ? originalBpm : this.params.bpm;
+    // Normaliza la voz: los stems suelen venir MUY flojos. Mide el pico y sube
+    // el bus de voz para que mande sobre la base.
+    let peak = 0;
+    for (let c = 0; c < this.vocalsBuf.numberOfChannels; c++) {
+      const d = this.vocalsBuf.getChannelData(c);
+      for (let i = 0; i < d.length; i += 64) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+    }
+    const norm = peak > 0.0001 ? Math.min(12, Math.max(2, 0.97 / peak)) : 4;
+    this.vocalsGain.gain.value = norm;
   }
 
   private startVocals() {
