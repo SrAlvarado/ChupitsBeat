@@ -35,9 +35,18 @@ export interface BaseParams {
   bpm: number;       // tempo objetivo del remix (schranz ~150)
   rootFreq: number;  // frecuencia raíz del bajo (de la tonalidad detectada)
   intensity: number; // 0..1 (densidad/energía → fase del arreglo)
-  drums?: boolean;   // kick+hats+clap activos (false en intro/breakdown)
+  drums?: boolean;   // kick+hats+clap+perc rodante activos
   bass?: boolean;    // bajo activo
+  acid?: boolean;    // línea ácida/stab (el gancho melódico del schranz)
+  minorScale?: boolean; // tonalidad menor/frigia (oscura) vs mayor
 }
+
+// Riffs ácidos (offsets de semitono sobre la raíz; null = silencio). Octavas
+// de lead las pone scheduleStep (+24). Rolling en corcheas → gancho hipnótico.
+const RIFF_MINOR: (number | null)[] = [0, null, 12, null, 3, null, 7, null, 0, null, 12, null, 10, null, 7, null];
+const RIFF_MAJOR: (number | null)[] = [0, null, 12, null, 4, null, 7, null, 0, null, 12, null, 9, null, 7, null];
+// Percusión metálica rodante (5 golpes sincopados sobre 16 = sensación euclídea).
+const PERC_ROLL = [false, false, true, false, false, true, false, false, true, false, false, true, false, false, true, false];
 
 // ── Arreglo (journey) con tempo variable ──────────────────────────────────
 export interface Section {
@@ -47,6 +56,7 @@ export interface Section {
   intensity: number;
   drums: boolean;
   bass: boolean;
+  acid: boolean;     // gancho ácido/stab
   vocals: boolean;
   lpf: number;       // filtro maestro de la sección (energía)
 }
@@ -54,11 +64,11 @@ export interface Section {
 /** Construye un arco de schranz con tempo variable a partir del BPM del drop. */
 export function buildArrangement(dropBpm: number): Section[] {
   return [
-    { name: 'intro',     bars: 8,  bpm: dropBpm - 6,  intensity: 0.2, drums: false, bass: false, vocals: true, lpf: 2200 },
-    { name: 'build',     bars: 8,  bpm: dropBpm - 2,  intensity: 0.5, drums: true,  bass: true,  vocals: true, lpf: 6000 },
-    { name: 'drop',      bars: 16, bpm: dropBpm,      intensity: 0.9, drums: true,  bass: true,  vocals: true, lpf: 20000 },
-    { name: 'breakdown', bars: 8,  bpm: dropBpm - 12, intensity: 0.4, drums: false, bass: true,  vocals: true, lpf: 1600 },
-    { name: 'drop 2',    bars: 16, bpm: dropBpm + 2,  intensity: 1.0, drums: true,  bass: true,  vocals: true, lpf: 20000 },
+    { name: 'intro',     bars: 4,  bpm: dropBpm - 6,  intensity: 0.2, drums: false, bass: false, acid: false, vocals: true, lpf: 2200 },
+    { name: 'build',     bars: 4,  bpm: dropBpm - 2,  intensity: 0.5, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 6000 },
+    { name: 'drop',      bars: 16, bpm: dropBpm,      intensity: 0.9, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 20000 },
+    { name: 'breakdown', bars: 8,  bpm: dropBpm - 12, intensity: 0.4, drums: false, bass: true,  acid: true,  vocals: true, lpf: 1600 },
+    { name: 'drop 2',    bars: 16, bpm: dropBpm + 2,  intensity: 1.0, drums: true,  bass: true,  acid: true,  vocals: true, lpf: 20000 },
   ];
 }
 
@@ -88,6 +98,20 @@ export function scheduleStep(
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
     osc.connect(sh); sh.connect(g); g.connect(out);
     osc.start(t); osc.stop(t + 0.36);
+
+    // RUMBLE: cola grave saturada (la firma del kick de schranz)
+    const r = ctx.createOscillator();
+    const rsh = ctx.createWaveShaper();
+    rsh.curve = distortionCurve(0.7) as Float32Array<ArrayBuffer>;
+    const rg = ctx.createGain();
+    r.type = 'sine';
+    r.frequency.setValueAtTime(72, t);
+    r.frequency.exponentialRampToValueAtTime(40, t + 0.14);
+    rg.gain.setValueAtTime(0.0001, t);
+    rg.gain.exponentialRampToValueAtTime(0.5, t + 0.05);
+    rg.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    r.connect(rsh); rsh.connect(rg); rg.connect(out);
+    r.start(t); r.stop(t + 0.52);
   }
 
   // ── HATS (corcheas) + open hat (offbeat) ──
@@ -101,6 +125,20 @@ export function scheduleStep(
   // ── CLAP (tiempos 2 y 4) ──
   if (drums && (step === 4 || step === 12)) {
     clap(ctx, out, t, 0.4 + p.intensity * 0.2);
+  }
+
+  // ── PERCUSIÓN METÁLICA RODANTE (groove hipnótico schranz) ──
+  if (drums && PERC_ROLL[step]) {
+    metalPerc(ctx, out, t, 0.28 + p.intensity * 0.22);
+  }
+
+  // ── ÁCIDO / STAB (el gancho melódico del schranz) ──
+  if (p.acid) {
+    const riff = p.minorScale === false ? RIFF_MAJOR : RIFF_MINOR;
+    const semi = riff[step];
+    if (semi !== null && semi !== undefined) {
+      acidVoice(ctx, out, t, p.rootFreq * Math.pow(2, (semi + 24) / 12), p.intensity);
+    }
   }
 
   // ── BAJO (rodante, con duck al kick) ──
@@ -145,6 +183,42 @@ function hat(ctx: BaseAudioContext, out: AudioNode, t: number, gain: number, dur
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(hp); hp.connect(g); g.connect(out);
   src.start(t); src.stop(t + dur + 0.02);
+}
+
+// Percusión metálica corta (ruido por bandpass agudo) para el roll sincopado.
+function metalPerc(ctx: BaseAudioContext, out: AudioNode, t: number, gain: number) {
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(ctx, 0.08);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 5200; bp.Q.value = 6;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  src.connect(bp); bp.connect(g); g.connect(out);
+  src.start(t); src.stop(t + 0.08);
+}
+
+// Voz ácida/stab: sawtooth con lowpass RESONANTE que se abre → el "acid lead"
+// que da carácter rave/schranz. `freq` ya viene en la octava de lead.
+function acidVoice(ctx: BaseAudioContext, out: AudioNode, t: number, freq: number, intensity: number) {
+  const dur = 0.16;
+  const osc = ctx.createOscillator();
+  const lp = ctx.createBiquadFilter();
+  const sh = ctx.createWaveShaper();
+  const g = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.value = freq;
+  lp.type = 'lowpass'; lp.Q.value = 11; // resonancia alta = acid
+  const peak = 1100 + intensity * 2600;
+  lp.frequency.setValueAtTime(320, t);
+  lp.frequency.exponentialRampToValueAtTime(peak, t + 0.04);
+  lp.frequency.exponentialRampToValueAtTime(420, t + dur);
+  sh.curve = distortionCurve(0.22) as Float32Array<ArrayBuffer>;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.42, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(lp); lp.connect(sh); sh.connect(g); g.connect(out);
+  osc.start(t); osc.stop(t + dur + 0.02);
 }
 
 function clap(ctx: BaseAudioContext, out: AudioNode, t: number, gain: number) {
@@ -208,7 +282,7 @@ export class RemixPlayer {
     if (!a || !a[i]) return;
     const s = a[i];
     this.secIdx = i;
-    this.setParams({ bpm: s.bpm, intensity: s.intensity, drums: s.drums, bass: s.bass });
+    this.setParams({ bpm: s.bpm, intensity: s.intensity, drums: s.drums, bass: s.bass, acid: s.acid });
     const now = this.ctx.currentTime;
     this.masterLPF.frequency.cancelScheduledValues(now);
     this.masterLPF.frequency.setTargetAtTime(s.lpf, now, 0.3);

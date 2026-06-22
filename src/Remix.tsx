@@ -85,7 +85,7 @@ export default function Remix() {
       return;
     }
     const rootFreq = noteToFreq(analysis?.key || 'a', 1);
-    const params = { bpm: targetBpm, rootFreq, intensity: 0.75 };
+    const params = { bpm: targetBpm, rootFreq, intensity: 0.75, minorScale: analysis?.scale !== 'major' };
     if (!player.current) player.current = new RemixPlayer(params);
     else player.current.setParams(params);
     player.current.onSection = (s) => setSection(s);
