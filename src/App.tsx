@@ -18,12 +18,10 @@ const PHASE_INTENSITY: Record<Phase, number> = {
 };
 const applySessionVisual = (s: Session) => applyVisual(s.genre.id, PHASE_INTENSITY[s.phase]);
 
-// Olas de arranque: primero el esqueleto del groove, luego las capas de color.
-// Así repartimos las llamadas a la IA y evitamos un pico de rate-limit.
-const START_WAVES: TrackRole[][] = [
-  ['kick', 'bass', 'hats'],
-  ['perc', 'stab', 'atmo'],
-];
+// Orden de arranque: SECUENCIAL (no en paralelo) para no disparar 6 llamadas a
+// la vez y que Groq rate-limite (eso dejaba pistas como el kick sin sonar). El
+// groove se construye primero (kick→hats→bass) y va sonando según llega.
+const START_ORDER: TrackRole[] = ['kick', 'hats', 'bass', 'perc', 'stab', 'atmo'];
 
 export default function App() {
   const [codes, setCodes]     = useState<Record<TrackRole, string>>(() => ({ ...DEFAULT_TRACK_CODE }));
@@ -77,17 +75,27 @@ export default function App() {
     setTrackCode(role, `// [IA generando ${role.toUpperCase()}…]`);
 
     const callAI = async (repair?: { spec: unknown; error: string }) => {
-      const res = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          directive, otherTrackCode, previousCode,
-          guidance: opts.guidance, prompt: opts.prompt ?? '', repair,
-        }),
-        signal,
-      });
-      if (!res.ok) throw new Error(`Error IA ${res.status}`);
-      return res.json() as Promise<{ spec?: TrackSpec; error?: string; raw?: string }>;
+      // Timeout por llamada: una petición colgada NO debe bloquear el loop Auto.
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 25000);
+      const onAbort = () => ctrl.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      try {
+        const res = await fetch(FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            directive, otherTrackCode, previousCode,
+            guidance: opts.guidance, prompt: opts.prompt ?? '', repair,
+          }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`Error IA ${res.status}`);
+        return await res.json() as { spec?: TrackSpec; error?: string; raw?: string };
+      } finally {
+        clearTimeout(to);
+        signal?.removeEventListener('abort', onAbort);
+      }
     };
 
     let lastErr = '';
@@ -136,10 +144,10 @@ export default function App() {
     setSessionTempo(sess.bpm);
     applySessionVisual(sess);
 
-    // Arranque por olas (groove primero, color después)
-    for (const wave of START_WAVES) {
+    // Arranque secuencial: cada pista suena en cuanto llega, sin saturar Groq.
+    for (const role of START_ORDER) {
       if (signal.aborted) return;
-      await Promise.all(wave.map(role => streamToTrack(role, { sess, role }, signal)));
+      await streamToTrack(role, { sess, role }, signal);
     }
 
     while (!signal.aborted && isRunRef.current) {
