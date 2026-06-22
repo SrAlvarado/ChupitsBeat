@@ -15,9 +15,10 @@ let replInstance = null;
 // ID del analizador FFT al que enrutamos TODA la mezcla (visuales reactivos).
 const MASTER_ANALYZER = 1;
 const FFT_PARAM = 4; // fftSize = 2^(4+5) = 512 → 256 bins
-// Gain maestro: deja headroom para que la suma de los 2 tracks (varias capas
-// cada uno) NO recorte en el destino de Web Audio (que no tiene limitador).
-const MASTER_GAIN = 0.55;
+// Gain maestro: deja headroom para que la suma de TODAS las pistas (kick,
+// hats, perc, bass, stab, atmo) NO recorte en el destino de Web Audio (sin
+// limitador propio). Con más pistas simultáneas, más bajo.
+const MASTER_GAIN = 0.45;
 
 // Patrón por track. El scheduler siempre recibe stack(A, B).
 const trackPatterns: Map<string, unknown> = new Map();
