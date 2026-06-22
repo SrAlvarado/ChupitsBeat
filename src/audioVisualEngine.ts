@@ -181,8 +181,9 @@ export async function initAudioEngine() {
   // ya no llaman a setCps (se elimina en sanitize). Mantenemos los globales
   // como no-ops seguros por si llega código antiguo, pero el tempo real lo
   // controla setSessionTempo().
-  const MAX_CPS = 2.7; // ~160 BPM, techo de seguridad (hard techno cabe)
-  const clampCps = (cps) => Math.max(0.5, Math.min(cps, MAX_CPS));
+  // Convención: 1 ciclo = 1 compás (4 beats). cps = BPM/240. Techo ~205 BPM.
+  const MAX_CPS = 205 / 240;
+  const clampCps = (cps) => Math.max(0.4, Math.min(cps, MAX_CPS));
   window.setCps  = () => {};   // ignorado: el track no decide el tempo
   window.setcps  = window.setCps;
   window.setCpm  = () => {};
@@ -196,10 +197,14 @@ export async function initAudioEngine() {
   console.log('[Chupits] Motor listo — samples: bd, sd, hh, oh, cp, RolandTR909...');
 }
 
-/** El Director fija el tempo de toda la sesión (un único reloj). */
+/**
+ * El Director fija el tempo de toda la sesión (un único reloj).
+ * Strudel usa cps (cycles per second), no BPM. Con 1 ciclo = 1 compás de 4/4
+ * (un `s("bd*4")` = los 4 negras del compás): cps = BPM / 240.
+ */
 export function setSessionTempo(bpm: number) {
   if (!replInstance) return;
-  const cps = (window as any).__clampCps?.(bpm / 60) ?? bpm / 60;
+  const cps = (window as any).__clampCps?.(bpm / 240) ?? bpm / 240;
   replInstance.setCps(cps);
 }
 
