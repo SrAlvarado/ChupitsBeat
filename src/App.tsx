@@ -10,7 +10,7 @@ import {
 } from './musicKnowledge';
 
 const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
-const PHRASE_CYCLES = 8; // frase musical: regenera cada 8 ciclos (sincronía por compás)
+const PHRASE_CYCLES = 16; // frase musical: regenera cada 16 compases (evolución estilo schranz)
 
 // Intensidad visual base por fase del set (el FFT del audio modula el resto).
 const PHASE_INTENSITY: Record<Phase, number> = {
