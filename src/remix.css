@@ -135,8 +135,22 @@
 .stem-bass   { border-color: rgba(75,155,255,0.4); }
 .stem-other  { border-color: rgba(180,107,255,0.4); }
 
-.btn-generate {
-  margin-top: 4px; padding: 1rem; font-family: inherit; font-weight: 800; font-size: 0.95rem; letter-spacing: 1px;
-  border: none; border-radius: 12px; cursor: not-allowed; color: #fff;
-  background: linear-gradient(90deg, #ff2d6b, #b46bff); opacity: 0.55;
+/* Panel de base de schranz (Fase 3) */
+.base-panel {
+  background: linear-gradient(135deg, rgba(255,45,107,0.10), rgba(180,107,255,0.10));
+  border: 1px solid rgba(255,45,107,0.3); border-radius: 14px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
 }
+.base-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; }
+.base-head small { color: rgba(255,255,255,0.5); font-weight: 400; }
+.btn-base {
+  padding: 0.6rem 1.2rem; font-family: inherit; font-weight: 800; cursor: pointer;
+  border: none; border-radius: 10px; color: #fff;
+  background: linear-gradient(90deg, #ff2d6b, #b46bff); transition: all .2s;
+}
+.btn-base:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,45,107,0.35); }
+.btn-base.on { background: linear-gradient(90deg, #ff2d6b, #ff8a3d); animation: pulse-base 0.9s infinite; }
+@keyframes pulse-base { 50% { box-shadow: 0 0 22px rgba(255,45,107,0.6); } }
+.bpm-slider { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+.bpm-slider b { color: #ff8a3d; min-width: 32px; }
+.bpm-slider input { flex: 1; accent-color: #ff2d6b; }

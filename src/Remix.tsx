@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './remix.css';
+import { RemixPlayer, noteToFreq } from './remixEngine';
 
 const BACKEND = 'http://localhost:8000';
 
@@ -67,6 +68,29 @@ export default function Remix() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // ── Base de schranz (Fase 3a) ──
+  const [targetBpm, setTargetBpm] = useState(150);
+  const [basePlaying, setBasePlaying] = useState(false);
+  const player = useRef<RemixPlayer | null>(null);
+  useEffect(() => () => { player.current?.dispose(); }, []);
+
+  const toggleBase = useCallback(() => {
+    if (basePlaying) {
+      player.current?.stop();
+      setBasePlaying(false);
+      return;
+    }
+    const rootFreq = noteToFreq(analysis?.key || 'a', 1);
+    const params = { bpm: targetBpm, rootFreq, intensity: 0.75 };
+    if (!player.current) player.current = new RemixPlayer(params);
+    else player.current.setParams(params);
+    player.current.start();
+    setBasePlaying(true);
+  }, [basePlaying, analysis, targetBpm]);
+
+  // refleja el BPM en vivo si se está tocando
+  useEffect(() => { player.current?.setParams({ bpm: targetBpm }); }, [targetBpm]);
 
   const reset = () => { setStems({}); setAnalysis(null); setSource(null); };
 
@@ -210,9 +234,20 @@ export default function Remix() {
               })}
             </div>
 
-            <button className="btn-generate" disabled title="Próxima fase">
-              🔥 Generar base de schranz + remix (Fase 3)
-            </button>
+            <div className="base-panel">
+              <div className="base-head">
+                <span>🔥 Base de schranz <small>· tono {analysis?.key ?? 'A'} {analysis?.scale ?? 'minor'}</small></span>
+                <button className={`btn-base ${basePlaying ? 'on' : ''}`} onClick={toggleBase}>
+                  {basePlaying ? '⏹ Parar base' : '▶ Generar base'}
+                </button>
+              </div>
+              <label className="bpm-slider">
+                BPM objetivo <b>{targetBpm}</b>
+                <input type="range" min={130} max={170} value={targetBpm}
+                  onChange={e => setTargetBpm(Number(e.target.value))} />
+              </label>
+              <p className="muted">Fase 3a — base sintetizada (kick distorsionado, hats offbeat, clap, bajo con sidechain). Siguiente: encajar la voz y renderizar.</p>
+            </div>
           </div>
         )}
       </div>
