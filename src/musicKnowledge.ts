@@ -5,10 +5,15 @@
 // CONVENCIONES de género (rango de BPM, tonalidades, estructura, paleta de
 // sonidos). El "Director" usa este catálogo para fijar una Sesión coherente
 // (un solo BPM, una sola tonalidad, una fase del set) y reparte restricciones
-// a los dos generadores (Track A = ritmo, Track B = bajo/melodía).
+// a VARIOS generadores, uno por elemento del track (kick, hats, perc, bajo,
+// stab, atmósfera) — como los stems de una producción de techno/schranz.
 // ════════════════════════════════════════════════════════════════════════
 
-export type TrackRole = 'drums' | 'bassMelody';
+// Una pista = un ELEMENTO del track (no "ritmo entero"). Reparto inspirado en
+// la taxonomía de producción de schranz: Kicks · Drums&Perc · Bass · Synths/
+// Stabs · Atmosphere/FX.
+export type TrackRole = 'kick' | 'hats' | 'perc' | 'bass' | 'stab' | 'atmo';
+export type TrackKind = 'percussion' | 'melodic';
 export type Phase = 'intro' | 'build' | 'peak' | 'breakdown';
 
 export interface GenreSpec {
@@ -217,9 +222,78 @@ export function bpmToCps(bpm: number): number {
   return bpm / 60;
 }
 
+// ── Registro de pistas (un generador por elemento) ────────────────────────
+export interface TrackDef {
+  id: TrackRole;
+  label: string;
+  kind: TrackKind;
+}
+
+/** El orden define el layout y el ciclo de regeneración del Director. */
+export const TRACKS: TrackDef[] = [
+  { id: 'kick', label: 'KICK', kind: 'percussion' },
+  { id: 'hats', label: 'HATS', kind: 'percussion' },
+  { id: 'perc', label: 'PERC', kind: 'percussion' },
+  { id: 'bass', label: 'BASS', kind: 'melodic' },
+  { id: 'stab', label: 'STAB', kind: 'melodic' },
+  { id: 'atmo', label: 'ATMO', kind: 'melodic' },
+];
+
+// Config por rol: familia (percusión/melódica), paleta y guía de sonido. Cada
+// pista es UN elemento, así que su presupuesto de capas es bajo.
+const ROLE_CONFIG: Record<TrackRole, {
+  kind: TrackKind;
+  baseLayers: number;
+  palette: (g: GenreSpec) => string[];
+  hint: (g: GenreSpec) => string;
+}> = {
+  kick: {
+    kind: 'percussion', baseLayers: 1,
+    palette: () => ['RolandTR909_bd', 'bd', 'RolandTR808_bd'],
+    hint: (g) => `SOLO el bombo, nada más. ${g.kick}`,
+  },
+  hats: {
+    kind: 'percussion', baseLayers: 2,
+    palette: () => ['hh', 'oh', 'ch'],
+    hint: (g) => `SOLO hi-hats: cerrados en corcheas/semicorcheas y open hat en el OFFBEAT. ${g.perc}`,
+  },
+  perc: {
+    kind: 'percussion', baseLayers: 2,
+    palette: () => ['cp', 'rim', 'perc', 'cr', 'sd', 'tb', 'click'],
+    hint: () => `Percusión SIN kick ni hats: clap/rim en 2 y 4, metales industriales en loops rodantes sincopados (euclid 3/16 o 5/16).`,
+  },
+  bass: {
+    kind: 'melodic', baseLayers: 1,
+    palette: (g) => g.palette.synths,
+    hint: (g) => `Línea de BAJO grave (octava 1-2). ${g.bass}`,
+  },
+  stab: {
+    kind: 'melodic', baseLayers: 1,
+    palette: (g) => g.palette.synths,
+    hint: () => `Stabs atonales / rave stabs: notas u acordes CORTOS, percusivos y filtrados, usados como golpe rítmico — NO una melodía larga.`,
+  },
+  atmo: {
+    kind: 'melodic', baseLayers: 1,
+    palette: () => ['sine', 'triangle', 'sawtooth'],
+    hint: () => `Atmósfera/textura de fondo: notas LARGAS (pad/drone) o barrido filtrado con reverb. Muy sutil, deja sitio al resto.`,
+  },
+};
+
+/** Código por defecto que se muestra en cada editor antes de generar. */
+export const DEFAULT_TRACK_CODE: Record<TrackRole, string> = {
+  kick: `// KICK\ns("bd:0*4").gain(0.85).play();`,
+  hats: `// HATS\nstack(\n  s("hh*8").gain(0.3),\n  s("~ oh ~ oh").gain(0.4)\n).play();`,
+  perc: `// PERC\ns("~ cp ~ cp").gain(0.5).play();`,
+  bass: `// BASS\nnote("<c2 ~ c2 eb2>").s("sawtooth").lpf(500).gain(0.6).release(0.1).play();`,
+  stab: `// STAB\nnote("~ ~ <c3 eb3> ~").s("square").lpf(1200).gain(0.4).release(0.08).play();`,
+  atmo: `// ATMO\nnote("c4").s("sine").gain(0.2).attack(2).release(3).room(0.6).play();`,
+};
+
 /** Lo que el Director envía a la edge function para un track concreto. */
 export interface Directive {
   role: TrackRole;
+  roleName: string;   // "KICK", "BASS"…
+  kind: TrackKind;    // percusión | melódica → decide el esquema JSON
   genre: string;
   vibe: string;
   bpm: number;
@@ -228,24 +302,30 @@ export interface Directive {
   energy: string;
   budget: { maxLayers: number; maxEventsPerCycle: number; note: string };
   palette: string[];
-  soundHint: string;  // kick/perc o bass según rol
+  soundHint: string;  // guía específica del elemento (kick, hats, bajo…)
   visual: string;
 }
 
 export function buildDirective(s: Session, role: TrackRole): Directive {
-  const b = PHASE_BUDGET[s.phase];
-  const isDrums = role === 'drums';
+  const cfg = ROLE_CONFIG[role];
+  const def = TRACKS.find(t => t.id === role)!;
+  const phaseB = PHASE_BUDGET[s.phase];
+  const fam = cfg.kind === 'percussion' ? phaseB.drums : phaseB.bassMelody;
+  // Cada pista es UN elemento: capas bajas (con +1 en peak para algo de cuerpo).
+  const maxLayers = Math.max(1, Math.min(fam.maxLayers, cfg.baseLayers + (s.phase === 'peak' ? 1 : 0)));
   return {
     role,
+    roleName: def.label,
+    kind: cfg.kind,
     genre: s.genre.name,
     vibe: s.genre.vibe,
     bpm: s.bpm,
     key: `${s.root}:${s.scale}`,
     phase: s.phase,
-    energy: b.energy,
-    budget: isDrums ? b.drums : b.bassMelody,
-    palette: isDrums ? s.genre.palette.drums : s.genre.palette.synths,
-    soundHint: isDrums ? `${s.genre.kick}. ${s.genre.perc}` : s.genre.bass,
+    energy: phaseB.energy,
+    budget: { maxLayers, maxEventsPerCycle: fam.maxEventsPerCycle, note: fam.note },
+    palette: cfg.palette(s.genre),
+    soundHint: cfg.hint(s.genre),
     visual: s.genre.visual,
   };
 }

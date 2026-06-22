@@ -21,14 +21,15 @@ Deno.serve(async (req: Request) => {
       throw new Error("Falta `directive`: el Director debe gobernar la sesión.");
     }
 
-    const isDrums = directive.role === 'drums';
+    const isDrums = directive.kind === 'percussion';
+    const roleName = directive.roleName || (isDrums ? 'RITMO' : 'MELODÍA');
 
     // ── Esquema JSON cerrado que la IA DEBE devolver ───────────────────────
     // La IA ya NO escribe JavaScript. Emite SOLO este JSON; el cliente lo
     // ensambla a Strudel de forma determinista (validando rangos y sonidos).
     // Una capa = un objeto. Percusión usa "sound"; melodía usa "note"+"sound".
     const schemaBlock = isDrums ? `
-  ESQUEMA JSON (TRACK A — RITMO). Cada capa es un objeto en "layers":
+  ESQUEMA JSON (pista de PERCUSIÓN — ${roleName}). Cada capa es un objeto en "layers":
   {
     "layers": [
       { "sound": "bd:0", "rhythm": "*4", "gain": "<1.0 0.85 0.9 0.8>" },
@@ -40,7 +41,7 @@ Deno.serve(async (req: Request) => {
   - "sound": SOLO percusión de la paleta: ${directive.palette.join(', ')} (admite ":0" ":1"…).
   - El ritmo de cada capa se define con UNO de: "rhythm" (sufijo mini, ej "*4" o "*8"),
     "euclid":[golpes,pasos], o "struct" (mini-notación "~ x ~ x"). NO uses "note" aquí.` : `
-  ESQUEMA JSON (TRACK B — BAJO + MELODÍA). Cada capa es un objeto en "layers":
+  ESQUEMA JSON (pista MELÓDICA — ${roleName}). Cada capa es un objeto en "layers":
   {
     "layers": [
       { "note": "<c1 ~ c1 eb1> <eb1 ~ g1 ~>", "sound": "sawtooth", "lpf": 600, "gain": 0.7, "release": 0.12 }
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
   DIRECCIÓN DE SESIÓN (OBLIGATORIO — lo fija el Director)
   ══════════════════════════════════════════
   Género:   ${directive.genre} — ${directive.vibe}
-  Tu rol:   ${isDrums ? 'TRACK A — RITMO (kick + percusión)' : 'TRACK B — BAJO + MELODÍA'}
+  Tu rol:   pista ${roleName} (${isDrums ? 'PERCUSIÓN' : 'MELÓDICA'}) — genera SOLO este elemento
   Fase del set: ${directive.phase} → energía ${directive.energy}
   Tonalidad BLOQUEADA: ${directive.key}
   Carácter: ${directive.soundHint}
@@ -91,10 +92,11 @@ Deno.serve(async (req: Request) => {
   - Máximo ~${directive.budget.maxEventsPerCycle} eventos por ciclo.
   - ${directive.budget.note}
 
-  COHERENCIA — esto suena AHORA en el otro track. Complementa, no dupliques sus golpes:
-  --- OTRO TRACK ---
+  COHERENCIA — esto suenan AHORA las DEMÁS pistas. Complementa, no dupliques sus golpes,
+  respeta su tonalidad y groove, y NO repitas su rol (tú haces solo ${roleName}):
+  --- DEMÁS PISTAS ---
   ${otherTrackCode || '(silencio)'}
-  ------------------
+  --------------------
   ${previousCode ? `Tú tocabas esto. EVOLUCIÓNALO (varía 1-2 elementos, no repitas idéntico):\n  --- TU TRACK ANTERIOR ---\n  ${previousCode}\n  -------------------------` : ''}
 
   ${schemaBlock}
@@ -105,9 +107,9 @@ Deno.serve(async (req: Request) => {
   El tempo (${directive.bpm} BPM) lo fija la sesión: NO lo incluyas.
   Responde ÚNICAMENTE con el objeto JSON.${repairBlock}`;
 
-    const userContent = `Genera el JSON de TU ROL (${isDrums ? 'TRACK A — ritmo' : 'TRACK B — bajo/melodía'}) ` +
+    const userContent = `Genera el JSON de la pista ${roleName} ` +
       `para ${directive.genre}, fase ${directive.phase}, tonalidad ${directive.key}, ` +
-      `respetando el presupuesto de densidad y en coherencia con el otro track.` +
+      `respetando el presupuesto de densidad y en coherencia con las demás pistas.` +
       `${guidance ? ` Indicación extra del DJ: ${guidance}` : ''}`;
 
     const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {

@@ -5,12 +5,12 @@ import { EditorView, keymap } from '@codemirror/view';
 import './App.css';
 import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo, applyVisual, awaitNextPhrase } from './audioVisualEngine';
 import {
-  GENRES, startSession, advanceSession, buildDirective, specToCode,
+  GENRES, TRACKS, DEFAULT_TRACK_CODE, startSession, advanceSession, buildDirective, specToCode,
   type Session, type TrackRole, type TrackSpec, type Phase,
 } from './musicKnowledge';
 
 const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
-const PHRASE_CYCLES = 16; // frase musical: regenera cada 16 compases (evolución estilo schranz)
+const PHRASE_CYCLES = 10; // frase musical: regenera cada 10 compases (un poco más ágil)
 
 // Intensidad visual base por fase del set (el FFT del audio modula el resto).
 const PHASE_INTENSITY: Record<Phase, number> = {
@@ -18,42 +18,34 @@ const PHASE_INTENSITY: Record<Phase, number> = {
 };
 const applySessionVisual = (s: Session) => applyVisual(s.genre.id, PHASE_INTENSITY[s.phase]);
 
-const TRACK_A_DEFAULT = `// TRACK A — Ritmo
-stack(
-  s("bd:0*4").gain(0.95),
-  s("hh:0*8").gain(0.3).pan("<-0.4 0.4>"),
-  s("sd:0").struct("~ x ~ x").gain(0.65)
-).play();`;
-
-const TRACK_B_DEFAULT = `// TRACK B — Bajo / Melodía
-note("<c2 eb2 g2 bb2>").s("sawtooth").lpf(400).gain(0.7).release(0.12).play();`;
+// Olas de arranque: primero el esqueleto del groove, luego las capas de color.
+// Así repartimos las llamadas a la IA y evitamos un pico de rate-limit.
+const START_WAVES: TrackRole[][] = [
+  ['kick', 'bass', 'hats'],
+  ['perc', 'stab', 'atmo'],
+];
 
 export default function App() {
-  const [trackA, setTrackA] = useState(TRACK_A_DEFAULT);
-  const [trackB, setTrackB] = useState(TRACK_B_DEFAULT);
-  const [isRunning, setIsRunning]   = useState(false);
-  const [isAuto, setIsAuto]         = useState(false);
-  const [style, setStyle]           = useState('hard techno schranz industrial');
-  const [aiTarget, setAiTarget]     = useState<'A'|'B'>('A');
-  const [streamingA, setStreamingA] = useState(false);
-  const [streamingB, setStreamingB] = useState(false);
-  const [session, setSession]       = useState<Session | null>(null);
+  const [codes, setCodes]     = useState<Record<TrackRole, string>>(() => ({ ...DEFAULT_TRACK_CODE }));
+  const [streaming, setStream]= useState<Partial<Record<TrackRole, boolean>>>({});
+  const [isRunning, setIsRunning] = useState(false);
+  const [isAuto, setIsAuto]       = useState(false);
+  const [style, setStyle]         = useState('hard techno schranz industrial');
+  const [aiTarget, setAiTarget]   = useState<TrackRole>('kick');
+  const [session, setSession]     = useState<Session | null>(null);
 
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const autoAbort   = useRef<AbortController | null>(null);
-  const styleRef    = useRef(style);
-  const isRunRef    = useRef(isRunning);
-  // Refs al código vivo de cada track (para coherencia entre ellos)
-  const codeA       = useRef(trackA);
-  const codeB       = useRef(trackB);
-  const sessionRef  = useRef<Session | null>(session);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+  const autoAbort  = useRef<AbortController | null>(null);
+  const styleRef   = useRef(style);
+  const isRunRef   = useRef(isRunning);
+  const codesRef   = useRef(codes);           // código vivo de cada pista (coherencia)
+  const sessionRef = useRef<Session | null>(session);
 
   // Mantener las refs sincronizadas tras cada render (sin escribirlas en render)
   useEffect(() => {
     styleRef.current   = style;
     isRunRef.current   = isRunning;
-    codeA.current      = trackA;
-    codeB.current      = trackB;
+    codesRef.current   = codes;
     sessionRef.current = session;
   });
 
@@ -61,32 +53,29 @@ export default function App() {
     if (canvasRef.current) initVisualEngine(canvasRef.current);
   }, []);
 
-  // ── Streaming de IA a un track ──────────────────────────────────────────
-  // Si `dir` viene, el Director gobierna (sesión coherente + autónomo).
-  // Si no, es petición manual libre con `prompt`.
-  interface GenOpts {
-    sess?: Session;
-    role?: TrackRole;
-    guidance?: string;
-    prompt?: string;
-  }
+  const setTrackCode = useCallback((role: TrackRole, value: string | ((p: string) => string)) => {
+    setCodes(prev => ({ ...prev, [role]: typeof value === 'function' ? value(prev[role]) : value }));
+  }, []);
+
+  // ── Generación de IA para UNA pista (un elemento del track) ──────────────
+  interface GenOpts { sess: Session; role: TrackRole; guidance?: string; prompt?: string; }
+
   const streamToTrack = useCallback(async (
-    trackId: 'A' | 'B',
+    role: TrackRole,
     opts: GenOpts,
     signal?: AbortSignal
   ): Promise<void> => {
-    const setCode    = trackId === 'A' ? setTrackA : setTrackB;
-    const setLoading = trackId === 'A' ? setStreamingA : setStreamingB;
+    const directive = buildDirective(opts.sess, role);
+    // Coherencia: enviamos lo que tocan TODAS las demás pistas ahora mismo.
+    const otherTrackCode = TRACKS
+      .filter(t => t.id !== role)
+      .map(t => `[${t.label}] ${codesRef.current[t.id]}`)
+      .join('\n');
+    const previousCode = codesRef.current[role];
 
-    const directive = opts.sess && opts.role ? buildDirective(opts.sess, opts.role) : undefined;
-    if (!directive) return; // la sesión siempre está dirigida por el Director
-    const otherTrackCode = trackId === 'A' ? codeB.current : codeA.current;
-    const previousCode   = trackId === 'A' ? codeA.current : codeB.current;
+    setStream(s => ({ ...s, [role]: true }));
+    setTrackCode(role, `// [IA generando ${role.toUpperCase()}…]`);
 
-    setLoading(true);
-    setCode(`// [IA generando Track ${trackId}…]`);
-
-    // La IA devuelve JSON; el cliente lo valida y ensambla a Strudel seguro.
     const callAI = async (repair?: { spec: unknown; error: string }) => {
       const res = await fetch(FUNCTION_URL, {
         method: 'POST',
@@ -101,7 +90,6 @@ export default function App() {
       return res.json() as Promise<{ spec?: TrackSpec; error?: string; raw?: string }>;
     };
 
-    // Ensambla el JSON → código Strudel; '' si la validación lo rechaza.
     let lastErr = '';
     const assemble = (spec?: TrackSpec): string => {
       if (!spec) return '';
@@ -113,10 +101,9 @@ export default function App() {
       let json = await callAI();
       let code = assemble(json.spec);
 
-      // Auto-corrección: si el JSON es inválido o no ensambla, reenvía a la IA
-      // el spec infractor + el error para que devuelva una versión corregida.
+      // Auto-corrección: reenvía el spec infractor + el error para 1 reintento.
       if (!code && !signal?.aborted) {
-        console.warn(`[IA Track ${trackId}] inválido (${json.error || lastErr}); pidiendo auto-corrección…`);
+        console.warn(`[IA ${role}] inválido (${json.error || lastErr}); pidiendo auto-corrección…`);
         json = await callAI({ spec: json.spec ?? json.raw ?? null, error: json.error || lastErr || 'JSON no válido' });
         code = assemble(json.spec);
       }
@@ -124,41 +111,37 @@ export default function App() {
       if (signal?.aborted) return;
 
       if (code) {
-        setCode(code);
-        evaluateCode(code, trackId);
+        setTrackCode(role, code);
+        evaluateCode(code, role);
       } else {
-        console.warn(`[IA Track ${trackId}] sigue inválido tras auto-corrección; patrón anterior intacto`);
-        setCode(`// ⚠️ IA no devolvió un patrón válido — se mantiene el anterior\n${previousCode}`);
+        console.warn(`[IA ${role}] sigue inválido tras auto-corrección; patrón anterior intacto`);
+        setTrackCode(role, `// ⚠️ IA no devolvió un patrón válido — se mantiene el anterior\n${previousCode}`);
       }
     } catch (err: unknown) {
       if ((err as Error).name !== 'AbortError') {
-        console.error(`[IA Track ${trackId}]`, err);
-        setCode(`// Error IA en Track ${trackId}\n${previousCode}`);
+        console.error(`[IA ${role}]`, err);
+        setTrackCode(role, `// Error IA en ${role.toUpperCase()}\n${previousCode}`);
       }
     } finally {
-      setLoading(false);
+      setStream(s => ({ ...s, [role]: false }));
     }
-  }, []);
+  }, [setTrackCode]);
 
   // ── Loop autónomo dirigido por el Director ─────────────────────────────────
-  // Hace una sesión completa solo: fija género/BPM/tonalidad, arranca ambos
-  // tracks coherentes y va avanzando la fase del set (intro→build→peak→break),
-  // regenerando un track en cada frontera de frase, coherente con lo que suena.
+  // Arranca todas las pistas (en olas), luego va regenerando UNA por frase,
+  // ciclando por todos los elementos, sincronizado con el reloj de Strudel.
   const runAutoLoop = useCallback(async (signal: AbortSignal) => {
-    // 1) El Director abre la sesión a partir del estilo (o el default)
     let sess = startSession(styleRef.current);
     setSession(sess);
     setSessionTempo(sess.bpm);
     applySessionVisual(sess);
 
-    // 2) Arranca los dos tracks coherentes en paralelo
-    await Promise.all([
-      streamToTrack('A', { sess, role: 'drums' }, signal),
-      streamToTrack('B', { sess, role: 'bassMelody' }, signal),
-    ]);
+    // Arranque por olas (groove primero, color después)
+    for (const wave of START_WAVES) {
+      if (signal.aborted) return;
+      await Promise.all(wave.map(role => streamToTrack(role, { sess, role }, signal)));
+    }
 
-    // 3) Loop: en cada frontera de frase avanza la fase y regenera un track
-    //    alternando, sincronizado con el reloj de Strudel (no un sleep fijo).
     while (!signal.aborted && isRunRef.current) {
       await awaitNextPhrase(PHRASE_CYCLES, signal);
       if (signal.aborted) break;
@@ -167,9 +150,9 @@ export default function App() {
       setSession(sess);
       applySessionVisual(sess);
 
-      const track: 'A' | 'B' = sess.generation % 2 === 0 ? 'A' : 'B';
-      const role: TrackRole  = track === 'A' ? 'drums' : 'bassMelody';
-      await streamToTrack(track, { sess, role }, signal);
+      // Regenera el elemento que toca en el ciclo (rota por todas las pistas).
+      const role = TRACKS[sess.generation % TRACKS.length].id;
+      await streamToTrack(role, { sess, role }, signal);
     }
   }, [streamToTrack]);
 
@@ -191,8 +174,6 @@ export default function App() {
   const handleStart = async () => {
     try {
       await initAudioEngine();
-      // Abre una sesión por defecto para que el tempo y la tonalidad estén
-      // fijados desde el principio (los tracks ya no fijan tempo ellos mismos).
       const sess = startSession(styleRef.current || style);
       setSession(sess);
       setSessionTempo(sess.bpm);
@@ -209,23 +190,12 @@ export default function App() {
     setIsRunning(false);
   };
 
-  // ── Keymaps por track ────────────────────────────────────────────────────
-  const kmA = keymap.of([
-    { key: 'Ctrl-Enter', run: () => { if (isRunning) evaluateCode(codeA.current, 'A'); return true; } },
-    { key: 'Mod-Enter',  run: () => { if (isRunning) evaluateCode(codeA.current, 'A'); return true; } },
-  ]);
-  const kmB = keymap.of([
-    { key: 'Ctrl-Enter', run: () => { if (isRunning) evaluateCode(codeB.current, 'B'); return true; } },
-    { key: 'Mod-Enter',  run: () => { if (isRunning) evaluateCode(codeB.current, 'B'); return true; } },
-  ]);
-
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="app-container">
       <canvas id="chupits-bg-canvas" ref={canvasRef} className="hydra-canvas" />
 
       <div className="ui-layer">
-        {/* Header */}
         <header className="header">
           <h1>Chupits Beat</h1>
           {session && (
@@ -249,41 +219,41 @@ export default function App() {
           </div>
         </header>
 
-        {/* Dos editores */}
+        {/* Una pista por elemento (kick, hats, perc, bass, stab, atmo) */}
         <main className="editors-grid">
-          <TrackPanel
-            id="A"
-            code={trackA}
-            onChange={setTrackA}
-            onEval={() => evaluateCode(trackA, 'A')}
-            onClear={() => clearTrack('A')}
-            isRunning={isRunning}
-            isStreaming={streamingA}
-            extensions={[javascript(), EditorView.lineWrapping, kmA]}
-          />
-          <TrackPanel
-            id="B"
-            code={trackB}
-            onChange={setTrackB}
-            onEval={() => evaluateCode(trackB, 'B')}
-            onClear={() => clearTrack('B')}
-            isRunning={isRunning}
-            isStreaming={streamingB}
-            extensions={[javascript(), EditorView.lineWrapping, kmB]}
-          />
+          {TRACKS.map(t => (
+            <TrackPanel
+              key={t.id}
+              id={t.id}
+              label={t.label}
+              code={codes[t.id]}
+              onChange={v => setTrackCode(t.id, v)}
+              onEval={() => evaluateCode(codesRef.current[t.id], t.id)}
+              onClear={() => clearTrack(t.id)}
+              isRunning={isRunning}
+              isStreaming={!!streaming[t.id]}
+              extensions={[
+                javascript(),
+                EditorView.lineWrapping,
+                keymap.of([
+                  { key: 'Ctrl-Enter', run: () => { if (isRunning) evaluateCode(codesRef.current[t.id], t.id); return true; } },
+                  { key: 'Mod-Enter',  run: () => { if (isRunning) evaluateCode(codesRef.current[t.id], t.id); return true; } },
+                ]),
+              ]}
+            />
+          ))}
         </main>
 
         {/* Footer IA */}
         <footer className="ai-copilot-section">
           <div className="ai-track-selector">
-            <button
-              className={`ai-track-btn ${aiTarget === 'A' ? 'active-a' : ''}`}
-              onClick={() => setAiTarget('A')}
-            >IA→A</button>
-            <button
-              className={`ai-track-btn ${aiTarget === 'B' ? 'active-b' : ''}`}
-              onClick={() => setAiTarget('B')}
-            >IA→B</button>
+            {TRACKS.map(t => (
+              <button
+                key={t.id}
+                className={`ai-track-btn ${aiTarget === t.id ? 'active-a' : ''}`}
+                onClick={() => setAiTarget(t.id)}
+              >IA→{t.label}</button>
+            ))}
           </div>
 
           <select
@@ -303,17 +273,13 @@ export default function App() {
           <input
             type="text"
             className="ai-prompt-input"
-            placeholder={`Indicación manual → Track ${aiTarget}  (Enter) · opcional`}
-            disabled={!isRunning || streamingA || streamingB}
+            placeholder={`Indicación manual → ${aiTarget.toUpperCase()}  (Enter) · opcional`}
+            disabled={!isRunning}
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 const sess = sessionRef.current ?? startSession(styleRef.current);
-                if (!sessionRef.current) { setSession(sess); setSessionTempo(sess.bpm); }
-                streamToTrack(aiTarget, {
-                  sess,
-                  role: aiTarget === 'A' ? 'drums' : 'bassMelody',
-                  guidance: e.currentTarget.value || undefined,
-                });
+                if (!sessionRef.current) { setSession(sess); setSessionTempo(sess.bpm); applySessionVisual(sess); }
+                streamToTrack(aiTarget, { sess, role: aiTarget, guidance: e.currentTarget.value || undefined });
                 e.currentTarget.value = '';
               }
             }}
@@ -326,7 +292,8 @@ export default function App() {
 
 // ── Sub-componente TrackPanel ────────────────────────────────────────────────
 interface TrackPanelProps {
-  id: 'A' | 'B';
+  id: TrackRole;
+  label: string;
   code: string;
   onChange: (v: string) => void;
   onEval: () => void;
@@ -336,12 +303,12 @@ interface TrackPanelProps {
   extensions: unknown[];
 }
 
-function TrackPanel({ id, code, onChange, onEval, onClear, isRunning, isStreaming, extensions }: TrackPanelProps) {
+function TrackPanel({ id, label, code, onChange, onEval, onClear, isRunning, isStreaming, extensions }: TrackPanelProps) {
   return (
     <div className={`track-panel ${isStreaming ? 'track-streaming' : ''}`}>
       <div className="track-header">
-        <span className={`track-label track-${id.toLowerCase()}-label`}>
-          {isStreaming ? '⟳ ' : '▶ '}TRACK {id}
+        <span className={`track-label track-${id}-label`}>
+          {isStreaming ? '⟳ ' : '▶ '}{label}
         </span>
         <div className="track-controls">
           <button onClick={onEval}  disabled={!isRunning} className="btn-eval">Eval</button>
