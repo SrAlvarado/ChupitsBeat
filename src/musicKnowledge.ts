@@ -250,7 +250,7 @@ const ROLE_CONFIG: Record<TrackRole, {
   kick: {
     kind: 'percussion', baseLayers: 1,
     palette: () => ['RolandTR909_bd', 'bd', 'RolandTR808_bd'],
-    hint: (g) => `SOLO el bombo, nada más. ${g.kick}`,
+    hint: (g) => `SOLO el bombo, nada más, en 4-on-floor: la capa principal DEBE usar "rhythm":"*4" (un golpe en CADA negra). ${g.kick}`,
   },
   hats: {
     kind: 'percussion', baseLayers: 2,
