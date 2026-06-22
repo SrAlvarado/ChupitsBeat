@@ -58,7 +58,7 @@ export function scheduleStep(
     osc.type = 'sine';
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(48, t + 0.09);
-    g.gain.setValueAtTime(1.0, t);
+    g.gain.setValueAtTime(0.72, t); // kick algo más bajo para que respire la voz
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
     osc.connect(sh); sh.connect(g); g.connect(out);
     osc.start(t); osc.stop(t + 0.36);
@@ -137,6 +137,7 @@ function clap(ctx: BaseAudioContext, out: AudioNode, t: number, gain: number) {
 export class RemixPlayer {
   private ctx: AudioContext;
   private master: GainNode;
+  private vocalsGain: GainNode;
   private timer = 0;
   private step = 0;
   private nextTime = 0;
@@ -155,6 +156,10 @@ export class RemixPlayer {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.5;
     this.master.connect(this.ctx.destination);
+    // Bus de voz, un poco por encima para que destaque sobre la base.
+    this.vocalsGain = this.ctx.createGain();
+    this.vocalsGain.gain.value = 1.3;
+    this.vocalsGain.connect(this.master);
     this.params = params;
   }
 
@@ -177,7 +182,7 @@ export class RemixPlayer {
     };
     s.tempo = this.params.bpm / (this.vocalsBpm || this.params.bpm); // stretch al BPM objetivo
     s.pitchSemitones = 0; // la base ya está en el tono del tema → sin pitch-shift
-    s.connect(this.master);
+    s.connect(this.vocalsGain);
     this.shifter = s;
   }
 
