@@ -41,6 +41,7 @@ export default function App() {
   const codesRef   = useRef(codes);
   const lockedRef  = useRef(locked);
   const sessionRef = useRef<Session | null>(session);
+  const rateLimitUntil = useRef(0); // back-off cuando Groq corta por cuota
 
   useEffect(() => {
     styleRef.current = style;
@@ -60,9 +61,17 @@ export default function App() {
   interface GenOpts { sess: Session; role: TrackRole; guidance?: string; prompt?: string; align?: boolean; }
 
   const streamToTrack = useCallback(async (role: TrackRole, opts: GenOpts, signal?: AbortSignal): Promise<void> => {
+    // Back-off si Groq nos cortó por cuota: no martillear la API.
+    if (Date.now() < rateLimitUntil.current) {
+      const s = Math.ceil((rateLimitUntil.current - Date.now()) / 1000);
+      setTrackCode(role, `// ⏳ Cuota de Groq en pausa — reintenta en ~${s}s\n${codesRef.current[role]}`);
+      return;
+    }
     const directive = buildDirective(opts.sess, role);
-    const otherTrackCode = TRACKS.filter(t => t.id !== role)
-      .map(t => `[${t.label}] ${codesRef.current[t.id]}`).join('\n');
+    // Coherencia con tokens mínimos: solo los anclajes (kick + bass), no las 6.
+    const otherTrackCode = (['kick', 'bass'] as TrackRole[])
+      .filter(r => r !== role)
+      .map(r => `[${r.toUpperCase()}] ${codesRef.current[r]}`).join('\n');
     const previousCode = codesRef.current[role];
 
     setStream(s => ({ ...s, [role]: true }));
@@ -81,7 +90,7 @@ export default function App() {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error(`Error IA ${res.status}`);
-        return await res.json() as { spec?: TrackSpec; error?: string; raw?: string };
+        return await res.json() as { spec?: TrackSpec; error?: string; raw?: string; rateLimited?: boolean; retryAfter?: string };
       } finally {
         clearTimeout(to);
         signal?.removeEventListener('abort', onAbort);
@@ -94,12 +103,23 @@ export default function App() {
       try { return specToCode(spec, directive); } catch (e) { lastErr = (e as Error).message; return ''; }
     };
 
+    // Maneja respuesta de rate-limit: activa cooldown y avisa, sin reintentar.
+    const handledRateLimit = (j: { rateLimited?: boolean; retryAfter?: string }): boolean => {
+      if (!j?.rateLimited) return false;
+      const secs = parseInt(j.retryAfter || '', 10);
+      rateLimitUntil.current = Date.now() + (isFinite(secs) && secs > 0 ? secs * 1000 : 90000);
+      setTrackCode(role, `// ⏳ Límite diario de Groq alcanzado.\n// Pausa la IA o usa otra clave/tier. ${previousCode}`);
+      return true;
+    };
+
     try {
       let json = await callAI();
+      if (handledRateLimit(json)) return;
       let code = assemble(json.spec);
       if (!code && !signal?.aborted) {
         console.warn(`[IA ${role}] inválido (${json.error || lastErr}); auto-corrección…`);
         json = await callAI({ spec: json.spec ?? json.raw ?? null, error: json.error || lastErr || 'JSON no válido' });
+        if (handledRateLimit(json)) return;
         code = assemble(json.spec);
       }
       if (signal?.aborted) return;
