@@ -52,19 +52,10 @@ Deno.serve(async (req: Request) => {
   - "sound": SOLO uno de: ${directive.palette.join(', ')}.
   - Oscurece el bajo con "lpf". Notas largas (release alto) en fases bajas.`;
 
-    // Principios musicales (estilo Sonic Pi) traducidos a los campos del JSON.
-    const principles = `PRINCIPIOS MUSICALES (aplícalos sobre los campos del JSON):
-  1. CAPAS INDEPENDIENTES: cada instrumento es una capa con su propio ritmo.
-  2. EUCLÍDEOS: "euclid":[3,8] (rumba), [5,8] (africano), [7,16] (shuffle sincopado).
-  3. ACENTOS/GROOVE: usa "gain" como patrón "<...>" para que NO suene mecánico
-     (ej kick "<1.0 0.85 0.9 0.8>", hats shuffle "<0.9 0.4 0.7 0.3>").
-  4. EVOLUCIÓN: usa "<...>" en "rhythm"/"note" para que el patrón cambie por ciclos.
-  5. POLIRRITMO: combina subdivisiones distintas entre capas (3 contra 4, 5 contra 4).
-  6. SILENCIO: usa "~" generosamente; deja respirar (más cuanto más baja la energía).`;
+    // Principios musicales compactos (menos tokens = más margen de cuota Groq).
+    const principles = `PRINCIPIOS: euclid [3,8]/[5,8]/[7,16] para grooves; "gain" como patrón "<1.0 0.85 0.9 0.8>" para acentos; "<...>" en rhythm/note para que evolucione; usa "~" (silencio) para respirar.`;
 
-    const fxList = `Efectos válidos por capa (numéricos; fuera de rango se descartan):
-  gain(0..1 o patrón), lpf(hz), hpf(hz), delay(0..1), room(0..1), speed(0.25..4),
-  attack(s), release(s), distort(0..1), pan(-1..1 o patrón "<-0.3 0.3>").`;
+    const fxList = `Efectos por capa: gain(0..1 o patrón), lpf, hpf, delay(0..1), room(0..1), speed(0.25..4), attack, release, distort(0..1), pan(-1..1 o "<-0.3 0.3>").`;
 
     const repairBlock = repair ? `
   ══════════════════════════════════════════
@@ -119,19 +110,28 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: systemInstruction },
           { role: "user", content: userContent },
         ],
         temperature: 0.7,
-        max_tokens: 700,
+        max_tokens: 400,
         response_format: { type: "json_object" },
       }),
     });
 
     if (!groqResponse.ok) {
       const errorText = await groqResponse.text();
+      // Rate limit (cuota Groq): devuelve señal clara (200) para que el cliente
+      // muestre un aviso y haga back-off, en vez de un 500 opaco.
+      if (groqResponse.status === 429) {
+        const retry = groqResponse.headers.get('retry-after') || '';
+        return new Response(JSON.stringify({ error: 'rate_limit', rateLimited: true, retryAfter: retry, detail: errorText.slice(0, 300) }), {
+          status: 200,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
       throw new Error(`Groq API Error: ${groqResponse.status} ${errorText}`);
     }
 

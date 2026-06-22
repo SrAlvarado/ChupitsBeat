@@ -27,6 +27,23 @@ const ROLE_GAIN: Record<string, number> = {
   kick: 1.0, bass: 0.8, perc: 0.55, hats: 0.5, stab: 0.4, atmo: 0.28,
 };
 
+// Órbitas (buses) para el SIDECHAIN. El kick (órbita 0) "duckea" la órbita 1,
+// donde viven bajo/stab/atmo → el pump clásico del techno: cada bombo agacha
+// los graves y pads, dando pocket y ritmo. Hats/perc (órbita 0) NO se duckean.
+const DUCK_ORBIT = 1;
+const ROLE_ORBIT: Record<string, number> = {
+  kick: 0, hats: 0, perc: 0, bass: DUCK_ORBIT, stab: DUCK_ORBIT, atmo: DUCK_ORBIT,
+};
+const DUCK_DEPTH = 0.5;   // 0 = sin pump, 1 = duck total
+const DUCK_ATTACK = 0.12; // recuperación del duck (s)
+
+// Curva de energía: LPF maestro por fase del set (cierra en intro/breakdown,
+// abre en peak). 20000 = abierto (sin filtrar). Lo fija setSessionEnergy().
+const PHASE_LPF: Record<string, number> = {
+  intro: 6000, build: 12000, peak: 20000, breakdown: 2500,
+};
+let energyCutoff = 20000;
+
 // Patrón por track. El scheduler siempre recibe stack(A, B).
 const trackPatterns: Map<string, unknown> = new Map();
 
@@ -39,12 +56,29 @@ async function rebuildScheduler() {
     ? patterns[0]
     : strudelCore.stack(...patterns);
 
-  // Gain maestro para evitar saturación al sumar ambos tracks.
+  // Gain maestro para evitar saturación al sumar todas las pistas.
   try {
     if (typeof (combined as any).gain === 'function') {
       combined = (combined as any).gain(MASTER_GAIN);
     }
   } catch (e) { console.warn('[master gain] no aplicado:', e); }
+
+  // Compresor de "glue" en la mezcla: pega los elementos y controla picos
+  // (idea del mastering con IA). Suave para no aplastar el groove.
+  try {
+    if (typeof (combined as any).compressor === 'function') {
+      combined = (combined as any)
+        .compressor(-15).compressorRatio(3)
+        .compressorAttack(0.005).compressorRelease(0.12);
+    }
+  } catch (e) { console.warn('[compressor] no aplicado:', e); }
+
+  // Curva de energía: LPF maestro por fase (solo si está cerrado, <20k).
+  try {
+    if (energyCutoff < 20000 && typeof (combined as any).lpf === 'function') {
+      combined = (combined as any).lpf(energyCutoff);
+    }
+  } catch (e) { console.warn('[energy lpf] no aplicado:', e); }
 
   // Enruta la mezcla completa a un analizador FFT (envío paralelo, no altera
   // el audio). Así los visuales de Hydra reaccionan al sonido de Strudel, NO
@@ -179,9 +213,19 @@ export async function initAudioEngine() {
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
       const trackId = (window as any).__currentTrack ?? 'kick';
-      // Aplica la ganancia de mezcla del rol (kick alto, atmo bajo) al patrón.
-      const g = ROLE_GAIN[trackId] ?? 0.6;
-      trackPatterns.set(trackId, g !== 1 ? (this as any).gain(g) : this);
+      let p: any = this;
+      try {
+        // Ganancia de mezcla del rol (kick alto, atmo bajo).
+        const g = ROLE_GAIN[trackId] ?? 0.6;
+        if (g !== 1) p = p.gain(g);
+        // Bus/órbita del rol (para el sidechain).
+        p = p.orbit(ROLE_ORBIT[trackId] ?? 0);
+        // El kick duckea la órbita melódica → pump de techno.
+        if (trackId === 'kick') {
+          p = p.duckorbit(DUCK_ORBIT).duckdepth(DUCK_DEPTH).duckattack(DUCK_ATTACK);
+        }
+      } catch (e) { console.warn('[mix/duck] fallback a patrón plano:', e); p = this; }
+      trackPatterns.set(trackId, p);
       rebuildScheduler();   // async pero no bloqueante — correcto
       return this;
     };
@@ -216,6 +260,12 @@ export function setSessionTempo(bpm: number) {
   if (!replInstance) return;
   const cps = (window as any).__clampCps?.(bpm / 240) ?? bpm / 240;
   replInstance.setCps(cps);
+}
+
+/** Curva de energía: ajusta el LPF maestro según la fase del set y reaplica. */
+export function setSessionEnergy(phase: string) {
+  energyCutoff = PHASE_LPF[phase] ?? 20000;
+  rebuildScheduler();
 }
 
 /**
