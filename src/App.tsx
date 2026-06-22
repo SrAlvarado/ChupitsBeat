@@ -5,23 +5,18 @@ import { EditorView, keymap } from '@codemirror/view';
 import './App.css';
 import { initVisualEngine, initAudioEngine, evaluateCode, clearTrack, stopEngines, setSessionTempo, applyVisual, awaitNextPhrase } from './audioVisualEngine';
 import {
-  GENRES, TRACKS, DEFAULT_TRACK_CODE, startSession, advanceSession, buildDirective, specToCode,
+  GENRES, TRACKS, DEFAULT_TRACK_CODE, PHASE_ACTIVE, startSession, advanceSession, buildDirective, specToCode,
   type Session, type TrackRole, type TrackSpec, type Phase,
 } from './musicKnowledge';
 
 const FUNCTION_URL = 'https://onocaxrqornukldmloyv.supabase.co/functions/v1/chupits-ai';
-const PHRASE_CYCLES = 10; // frase musical: regenera cada 10 compases (un poco más ágil)
+const PHRASE_CYCLES = 8; // cada cuántos compases avanza la fase / cambia el arreglo
 
 // Intensidad visual base por fase del set (el FFT del audio modula el resto).
 const PHASE_INTENSITY: Record<Phase, number> = {
   intro: 0.2, build: 0.5, peak: 0.95, breakdown: 0.4,
 };
 const applySessionVisual = (s: Session) => applyVisual(s.genre.id, PHASE_INTENSITY[s.phase]);
-
-// Orden de arranque: SECUENCIAL (no en paralelo) para no disparar 6 llamadas a
-// la vez y que Groq rate-limite (eso dejaba pistas como el kick sin sonar). El
-// groove se construye primero (kick→hats→bass) y va sonando según llega.
-const START_ORDER: TrackRole[] = ['kick', 'hats', 'bass', 'perc', 'stab', 'atmo'];
 
 export default function App() {
   const [codes, setCodes]     = useState<Record<TrackRole, string>>(() => ({ ...DEFAULT_TRACK_CODE }));
@@ -56,7 +51,7 @@ export default function App() {
   }, []);
 
   // ── Generación de IA para UNA pista (un elemento del track) ──────────────
-  interface GenOpts { sess: Session; role: TrackRole; guidance?: string; prompt?: string; }
+  interface GenOpts { sess: Session; role: TrackRole; guidance?: string; prompt?: string; align?: boolean; }
 
   const streamToTrack = useCallback(async (
     role: TrackRole,
@@ -119,6 +114,9 @@ export default function App() {
       if (signal?.aborted) return;
 
       if (code) {
+        // Aplica el cambio EN el siguiente compás (no a mitad de ciclo, en
+        // cuanto llega la IA) → transición limpia, no brusca.
+        if (opts.align) { await awaitNextPhrase(1, signal); if (signal?.aborted) return; }
         setTrackCode(role, code);
         evaluateCode(code, role);
       } else {
@@ -138,16 +136,24 @@ export default function App() {
   // ── Loop autónomo dirigido por el Director ─────────────────────────────────
   // Arranca todas las pistas (en olas), luego va regenerando UNA por frase,
   // ciclando por todos los elementos, sincronizado con el reloj de Strudel.
+  // Silencia una pista (sale del arreglo en esta fase).
+  const silence = useCallback((role: TrackRole) => {
+    clearTrack(role);
+    setTrackCode(role, `// (${role.toUpperCase()} en silencio en esta fase)`);
+  }, [setTrackCode]);
+
   const runAutoLoop = useCallback(async (signal: AbortSignal) => {
     let sess = startSession(styleRef.current);
     setSession(sess);
     setSessionTempo(sess.bpm);
     applySessionVisual(sess);
 
-    // Arranque secuencial: cada pista suena en cuanto llega, sin saturar Groq.
-    for (const role of START_ORDER) {
+    const live = new Set<TrackRole>();
+    // Arranque secuencial del set activo de la fase intro (sin saturar Groq).
+    for (const role of PHASE_ACTIVE[sess.phase]) {
       if (signal.aborted) return;
       await streamToTrack(role, { sess, role }, signal);
+      live.add(role);
     }
 
     while (!signal.aborted && isRunRef.current) {
@@ -157,12 +163,27 @@ export default function App() {
       sess = advanceSession(sess);
       setSession(sess);
       applySessionVisual(sess);
+      const active = PHASE_ACTIVE[sess.phase];
 
-      // Regenera el elemento que toca en el ciclo (rota por todas las pistas).
-      const role = TRACKS[sess.generation % TRACKS.length].id;
-      await streamToTrack(role, { sess, role }, signal);
+      // 1) Silencia las pistas que SALEN del arreglo en esta fase.
+      for (const role of [...live]) {
+        if (!active.includes(role)) { silence(role); live.delete(role); }
+      }
+      // 2) Activa (genera) las que ENTRAN nuevas, alineadas al compás.
+      for (const role of active) {
+        if (signal.aborted) break;
+        if (!live.has(role)) {
+          await streamToTrack(role, { sess, role, align: true }, signal);
+          live.add(role);
+        }
+      }
+      // 3) Varía UNA pista activa (rotación) para que el groove evolucione.
+      if (!signal.aborted && active.length) {
+        const role = active[sess.generation % active.length];
+        await streamToTrack(role, { sess, role, align: true }, signal);
+      }
     }
-  }, [streamToTrack]);
+  }, [streamToTrack, silence]);
 
   const startAuto = useCallback(async () => {
     if (!isRunning) return;

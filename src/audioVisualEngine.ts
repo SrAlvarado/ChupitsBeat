@@ -18,7 +18,14 @@ const FFT_PARAM = 4; // fftSize = 2^(4+5) = 512 → 256 bins
 // Gain maestro: deja headroom para que la suma de TODAS las pistas (kick,
 // hats, perc, bass, stab, atmo) NO recorte en el destino de Web Audio (sin
 // limitador propio). Con más pistas simultáneas, más bajo.
-const MASTER_GAIN = 0.45;
+const MASTER_GAIN = 0.5;
+
+// Jerarquía de mezcla por elemento: el KICK manda, las capas de color (stab,
+// atmo) van por detrás. Sin esto, 6 pistas al mismo nivel = pared de sonido
+// sin ritmo. Se multiplica por la ganancia interna que ya trae cada patrón.
+const ROLE_GAIN: Record<string, number> = {
+  kick: 1.0, bass: 0.8, perc: 0.55, hats: 0.5, stab: 0.4, atmo: 0.28,
+};
 
 // Patrón por track. El scheduler siempre recibe stack(A, B).
 const trackPatterns: Map<string, unknown> = new Map();
@@ -171,8 +178,10 @@ export async function initAudioEngine() {
   const Pattern = strudelCore.Pattern;
   if (Pattern && !Pattern.prototype.play) {
     Pattern.prototype.play = function () {
-      const trackId = (window as any).__currentTrack ?? 'A';
-      trackPatterns.set(trackId, this);
+      const trackId = (window as any).__currentTrack ?? 'kick';
+      // Aplica la ganancia de mezcla del rol (kick alto, atmo bajo) al patrón.
+      const g = ROLE_GAIN[trackId] ?? 0.6;
+      trackPatterns.set(trackId, g !== 1 ? (this as any).gain(g) : this);
       rebuildScheduler();   // async pero no bloqueante — correcto
       return this;
     };

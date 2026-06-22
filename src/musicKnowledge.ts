@@ -144,6 +144,16 @@ export interface PhaseBudget {
 
 export const PHASES: Phase[] = ['intro', 'build', 'peak', 'breakdown'];
 
+// ── Arreglo por fase: QUÉ elementos suenan en cada fase del set ────────────
+// Como el arco de energía de un DJ: no toca todo a la vez. Intro mínimo, peak
+// completo, breakdown SIN kick. Las pistas fuera de la fase se silencian.
+export const PHASE_ACTIVE: Record<Phase, TrackRole[]> = {
+  intro:     ['kick', 'hats', 'bass'],
+  build:     ['kick', 'hats', 'perc', 'bass'],
+  peak:      ['kick', 'hats', 'perc', 'bass', 'stab', 'atmo'],
+  breakdown: ['bass', 'perc', 'stab', 'atmo'],
+};
+
 export const PHASE_BUDGET: Record<Phase, PhaseBudget> = {
   intro: {
     energy: 'baja — solo cimientos, mucho espacio y silencio',
