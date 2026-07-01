@@ -1,0 +1,46 @@
+.xp-root { position: fixed; inset: 0; background: #05080b; overflow: hidden; }
+.xp-root canvas { display: block; }
+
+/* Apagón de transición entre fases */
+.xp-fade {
+  position: fixed; inset: 0; background: #000; pointer-events: none;
+  opacity: 0; transition: opacity .35s ease; z-index: 50;
+}
+.xp-fade.on { opacity: 1; }
+
+/* Pistas de navegación */
+.xp-hint {
+  position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%);
+  z-index: 20; text-align: center; color: rgba(255,255,255,0.75);
+  font-family: 'Courier New', monospace; font-size: 0.9rem; letter-spacing: 2px;
+  text-transform: uppercase; pointer-events: none;
+  animation: xp-pulse 2.2s ease-in-out infinite;
+}
+.xp-hint span {
+  display: block; font-size: 2rem; font-weight: 900; letter-spacing: 6px; margin-bottom: 10px;
+  background: linear-gradient(90deg, #00ffcc, #4b9bff, #ff2d6b);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.xp-hint.small { font-size: 1rem; }
+@keyframes xp-pulse { 50% { opacity: 0.45; } }
+
+/* Sala: overlay con el panel funcional */
+.room-overlay { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+.xp-back {
+  position: fixed; top: 14px; left: 14px; z-index: 40; pointer-events: auto;
+  background: rgba(10,12,16,0.7); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.18); color: #cfe; border-radius: 999px;
+  padding: 0.5rem 1rem; font-family: 'Courier New', monospace; font-size: 0.8rem; cursor: pointer;
+}
+.xp-back:hover { border-color: #00ffcc; color: #fff; }
+
+.room-panel {
+  position: absolute; inset: 0; overflow-y: auto; pointer-events: auto;
+  /* deja ver la sala 3D detrás, pero con un velo para legibilidad */
+  background: radial-gradient(120% 80% at 50% 0%, rgba(5,8,11,0.55), rgba(5,8,11,0.82));
+}
+
+/* Render de Discover/History como panel (no pantalla completa con fondo sólido) */
+.room-panel .remix { position: static; inset: auto; background: transparent; overflow: visible; }
+.room-panel .remix-bg { display: none; }
+.room-panel .mode-switch { display: none; }
