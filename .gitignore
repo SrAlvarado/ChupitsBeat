@@ -31,3 +31,9 @@ server/work/
 __pycache__/
 *.pyc
 
+# Build y despliegue
+.vercel
+*.tsbuildinfo
+
+# Capturas de snap.mjs
+shot*.png
