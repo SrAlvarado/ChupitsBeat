@@ -6,14 +6,46 @@
  * Node), en formato Web estándar: un `export default function(req)` a secas se
  * interpretaría como handler de Node `(req, res)` y `req.json()` reventaría.
  *
- * Funciona con dos proveedores, según la clave que haya en el entorno:
+ * Funciona con tres proveedores, según la clave que haya en el entorno:
  *   ANTHROPIC_API_KEY → Claude
  *   XAI_API_KEY       → Grok
- * Si están las dos, manda DJ_PROVIDER ("claude" | "grok"), y por defecto Claude.
+ *   GEMINI_API_KEY    → Gemini
+ * Si hay varias, manda DJ_PROVIDER; si no, se elige en ese orden.
+ *
+ * xAI y Gemini exponen endpoint compatible con OpenAI, así que comparten
+ * camino: sólo cambian la URL, la clave y el modelo.
  */
 import Anthropic from '@anthropic-ai/sdk'
 
-type Provider = 'claude' | 'grok'
+type Provider = 'claude' | 'grok' | 'gemini'
+
+interface OpenAICompatible {
+  label: string
+  url: string
+  key: string
+  model: string
+  /** Gemini rechaza additionalProperties/strict en su capa OpenAI. */
+  strict: boolean
+}
+
+/** Configuración de cada proveedor compatible con OpenAI. */
+function openAiConfig(provider: 'grok' | 'gemini'): OpenAICompatible {
+  return provider === 'grok'
+    ? {
+        label: 'xAI',
+        url: 'https://api.x.ai/v1/chat/completions',
+        key: process.env.XAI_API_KEY!,
+        model: process.env.XAI_MODEL ?? 'grok-4.6',
+        strict: true,
+      }
+    : {
+        label: 'Gemini',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        key: (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY)!,
+        model: process.env.GEMINI_MODEL ?? 'gemini-3.7-flash',
+        strict: false,
+      }
+}
 
 interface Vibe {
   genre: 'lofi' | 'house' | 'schranz'
@@ -94,12 +126,14 @@ Escribe el próximo tema para la emisora ${vibe.genre}.`
 
 /** Qué proveedor toca, según las claves que haya puestas. */
 function pickProvider(): Provider | null {
+  const has: Record<Provider, boolean> = {
+    claude: !!process.env.ANTHROPIC_API_KEY,
+    grok: !!process.env.XAI_API_KEY,
+    gemini: !!(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
+  }
   const forced = process.env.DJ_PROVIDER as Provider | undefined
-  if (forced === 'grok' && process.env.XAI_API_KEY) return 'grok'
-  if (forced === 'claude' && process.env.ANTHROPIC_API_KEY) return 'claude'
-  if (process.env.ANTHROPIC_API_KEY) return 'claude'
-  if (process.env.XAI_API_KEY) return 'grok'
-  return null
+  if (forced && has[forced]) return forced
+  return (['claude', 'grok', 'gemini'] as Provider[]).find((p) => has[p]) ?? null
 }
 
 async function composeWithClaude(vibe: Vibe): Promise<Brief> {
@@ -119,43 +153,112 @@ async function composeWithClaude(vibe: Vibe): Promise<Brief> {
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text)
     .join('')
-  return JSON.parse(text) as Brief
+  return parseBrief(text)
 }
 
-/** xAI es compatible con OpenAI, así que basta con fetch: sin dependencia extra. */
-async function composeWithGrok(vibe: Vibe): Promise<Brief> {
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+/**
+ * Traduce el error de xAI a algo que un humano pueda accionar. El cuerpo llega
+ * como {"code": "...", "error": "..."} y sin esto acaba volcado en pantalla.
+ */
+function explainProvider(cfg: OpenAICompatible, status: number, body: string): string {
+  let code = ''
+  let detail = ''
+  try {
+    const parsed = JSON.parse(body) as {
+      code?: string
+      error?: string | { message?: string; status?: string }
+    }
+    code = parsed.code ?? ''
+    if (typeof parsed.error === 'string') {
+      detail = parsed.error
+    } else {
+      detail = parsed.error?.message ?? ''
+      code = code || (parsed.error?.status ?? '')
+    }
+  } catch {
+    detail = body
+  }
+
+  const envVar = cfg.label === 'xAI' ? 'XAI_API_KEY' : 'GEMINI_API_KEY'
+  const modelVar = cfg.label === 'xAI' ? 'XAI_MODEL' : 'GEMINI_MODEL'
+
+  if (/credits or licenses|billing|quota.*exceeded|insufficient/i.test(detail)) {
+    return `${cfg.label} dice que no hay saldo o cuota disponible — revisa la facturación de tu cuenta`
+  }
+  if (status === 401 || /api key not valid|invalid.*api key/i.test(detail) || code === 'unauthenticated') {
+    return `${cfg.label} no acepta la clave — revisa ${envVar} en Vercel`
+  }
+  if (status === 403) {
+    return `${cfg.label} deniega el permiso${detail ? `: ${detail.slice(0, 120)}` : ''}`
+  }
+  if (status === 404 || /not found|unsupported model/i.test(detail)) {
+    return `${cfg.label} no conoce el modelo "${cfg.model}" — cámbialo con ${modelVar}`
+  }
+  if (status === 429) {
+    return `${cfg.label} te está limitando el ritmo — prueba en un minuto`
+  }
+  if (status >= 500) {
+    return `${cfg.label} está teniendo problemas — prueba en un rato`
+  }
+  return `${cfg.label} respondió ${status}${detail ? `: ${detail.slice(0, 120)}` : ''}`
+}
+
+/**
+ * Algunos modelos devuelven el JSON envuelto en un bloque markdown pese al
+ * response_format. Se extrae el objeto antes de parsear.
+ */
+function parseBrief(raw: string): Brief {
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim()
+  try {
+    return JSON.parse(cleaned) as Brief
+  } catch {
+    const start = cleaned.indexOf('{')
+    const end = cleaned.lastIndexOf('}')
+    if (start === -1 || end <= start) throw new Error('la respuesta no traía JSON')
+    return JSON.parse(cleaned.slice(start, end + 1)) as Brief
+  }
+}
+
+/** xAI y Gemini hablan OpenAI, así que basta con fetch: sin dependencia extra. */
+async function composeWithOpenAI(cfg: OpenAICompatible, vibe: Vibe): Promise<Brief> {
+  // Gemini no admite additionalProperties ni strict en su capa de compatibilidad
+  const { additionalProperties, ...loose } = SCHEMA
+  const schema = cfg.strict ? SCHEMA : loose
+
+  const res = await fetch(cfg.url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` },
     body: JSON.stringify({
-      model: process.env.XAI_MODEL ?? 'grok-4.6',
+      model: cfg.model,
       messages: [
         { role: 'system', content: SYSTEM },
         { role: 'user', content: userPrompt(vibe) },
       ],
       response_format: {
         type: 'json_schema',
-        json_schema: { name: 'tema', schema: SCHEMA, strict: true },
+        json_schema: cfg.strict
+          ? { name: 'tema', schema, strict: true }
+          : { name: 'tema', schema },
       },
     }),
   })
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`xAI respondió ${res.status}${detail ? ` — ${detail.slice(0, 180)}` : ''}`)
+    const body = await res.text().catch(() => '')
+    throw new Error(explainProvider(cfg, res.status, body))
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
   const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error('xAI devolvió una respuesta vacía')
-  return JSON.parse(content) as Brief
+  if (!content) throw new Error(`${cfg.label} devolvió una respuesta vacía`)
+  return parseBrief(content)
 }
 
 export async function POST(req: Request): Promise<Response> {
   const provider = pickProvider()
   if (!provider) {
-    return json({ error: 'falta ANTHROPIC_API_KEY o XAI_API_KEY en el entorno' }, 500)
+    return json(
+      { error: 'el DJ no tiene clave: añade GEMINI_API_KEY, XAI_API_KEY o ANTHROPIC_API_KEY en Vercel' },
+      500,
+    )
   }
 
   let vibe: Vibe
@@ -168,14 +271,20 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const brief = provider === 'grok' ? await composeWithGrok(vibe) : await composeWithClaude(vibe)
+    const brief =
+      provider === 'claude'
+        ? await composeWithClaude(vibe)
+        : await composeWithOpenAI(openAiConfig(provider), vibe)
     return json({ ...brief, by: provider }, 200)
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
       return json({ error: 'demasiadas peticiones — prueba en un minuto' }, 429)
     }
+    if (err instanceof Anthropic.AuthenticationError) {
+      return json({ error: 'Anthropic no acepta la clave — revisa ANTHROPIC_API_KEY en Vercel' }, 502)
+    }
     if (err instanceof Anthropic.APIError) {
-      return json({ error: `la API respondió ${err.status}` }, 502)
+      return json({ error: `Anthropic respondió ${err.status}` }, 502)
     }
     return json({ error: err instanceof Error ? err.message : 'fallo desconocido' }, 502)
   }

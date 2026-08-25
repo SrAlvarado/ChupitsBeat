@@ -18,7 +18,7 @@ export type Mood =
 export type Style = 'clásico' | 'balada' | 'comping' | 'arpegio'
 
 /** Quién ha firmado el tema, cuando no lo ha hecho el compositor local. */
-export type DjAuthor = 'claude' | 'grok'
+export type DjAuthor = 'claude' | 'grok' | 'gemini'
 
 /** Las tres emisoras del dial. */
 export type Genre = 'lofi' | 'house' | 'schranz'

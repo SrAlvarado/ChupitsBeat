@@ -320,6 +320,7 @@ function schranzDrone(song: Song, o: Opts): string {
 const AUTHOR_NOTE: Record<DjAuthor | 'local', string> = {
   claude: '// escrito por Claude en los platos',
   grok: '// escrito por Grok en los platos',
+  gemini: '// escrito por Gemini en los platos',
   local: '// escrito por el compositor de la emisora',
 }
 

@@ -99,15 +99,18 @@ reventaría — de ahí el export por método.
 
 `api/dj.ts` elige proveedor según la clave que encuentre en el entorno:
 
-| Variable | Proveedor | Modelo |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Claude | `claude-opus-5` |
-| `XAI_API_KEY` | Grok | `grok-4.6`, o el que pongas en `XAI_MODEL` |
+| Variable | Proveedor | Modelo por defecto | Se cambia con |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude | `claude-opus-5` | — |
+| `XAI_API_KEY` | Grok | `grok-4.6` | `XAI_MODEL` |
+| `GEMINI_API_KEY` | Gemini | `gemini-3.7-flash` | `GEMINI_MODEL` |
 
-Si están las dos, manda `DJ_PROVIDER` (`claude` o `grok`); por defecto, Claude.
-xAI es compatible con OpenAI, así que la llamada va con `fetch` a
-`https://api.x.ai/v1/chat/completions` y `response_format: json_schema` — sin
-dependencia extra.
+Si hay varias claves, manda `DJ_PROVIDER`; si no, se elige en ese orden.
+
+xAI y Gemini exponen endpoint compatible con OpenAI, así que comparten el mismo
+`fetch` con `response_format: json_schema` — sólo cambian URL, clave y modelo, y
+no hace falta ninguna dependencia extra. Gemini no admite `additionalProperties`
+ni `strict` en esa capa, así que el esquema se le manda sin ellos.
 
 Sin ninguna clave la emisora funciona igual: el compositor local escribe los
 temas y el botón del DJ devuelve un aviso en vez de romper.
@@ -118,8 +121,8 @@ temas y el botón del DJ devuelve un aviso en vez de romper.
 2. En [vercel.com/new](https://vercel.com/new), importa `SrAlvarado/ChupitsBeat`.
 3. No toques nada de la configuración: Vite se detecta solo.
 4. Antes de darle a **Deploy**, despliega *Environment Variables* y añade una:
-   `XAI_API_KEY` (o `ANTHROPIC_API_KEY`) con tu clave. Deja marcados los tres
-   entornos.
+   `GEMINI_API_KEY` (o `XAI_API_KEY`, o `ANTHROPIC_API_KEY`) con tu clave. Deja
+   marcados los tres entornos.
 5. **Deploy**. Tarda un par de minutos.
 6. Abre la URL, dale a **Play** y luego a **Componer con IA** para comprobar que
    el endpoint responde.
