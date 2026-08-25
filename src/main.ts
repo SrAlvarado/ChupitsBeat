@@ -187,7 +187,12 @@ djBtn.addEventListener('click', () => {
     djBtn.disabled = true
     djLine.textContent = 'la IA está escribiendo el patrón…'
     const ctrl = new AbortController()
-    const timeout = setTimeout(() => ctrl.abort(), 30000)
+    // escribir un tema entero lleva su tiempo: los modelos que razonan pasan
+    // de medio minuto sin despeinarse
+    const slow = setTimeout(() => {
+      djLine.textContent = 'la IA sigue escribiendo… los temas largos tardan'
+    }, 20000)
+    const timeout = setTimeout(() => ctrl.abort(), 120000)
     try {
       const res = await fetch('/api/dj', {
         method: 'POST',
@@ -207,9 +212,13 @@ djBtn.addEventListener('click', () => {
       radio.setVibe(vibe)
       await radio.compose(data)
     } catch (err) {
-      djLine.textContent =
-        err instanceof Error ? err.message : 'el DJ no coge el teléfono — prueba otra vez'
+      djLine.textContent = ctrl.signal.aborted
+        ? 'la IA ha tardado demasiado — prueba otra vez o cambia de modelo'
+        : err instanceof Error
+          ? err.message
+          : 'el DJ no coge el teléfono — prueba otra vez'
     } finally {
+      clearTimeout(slow)
       clearTimeout(timeout)
       djBtn.disabled = false
     }
