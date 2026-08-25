@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { TEMPLATES, BACKEND_IMG, rgb01 } from './History';
@@ -16,9 +16,11 @@ const GALLERY: { name: string; tpl: string }[] = [
   { name: 'AITANA', tpl: 'sunrise' },
   { name: 'C. TANGANA', tpl: 'inkred' },
 ];
+const NAV: [string, string][] = [
+  ['CARA A', '#caraa'], ['GALERÍA', '#galeria'], ['CARA B', '#carab'],
+];
 
-// Mini-póster real para la galería: mismas plantillas que History, con la foto
-// del artista (Deezer vía proxy /img) y su tipografía/paleta/decoración.
+// Mini-póster real para la galería (misma plantilla que History).
 function PosterCard({ name, tplId, onOpen }: { name: string; tplId: string; onOpen: () => void }) {
   const tpl = TEMPLATES.find(t => t.id === tplId) || TEMPLATES[0];
   const [pic, setPic] = useState('');
@@ -74,170 +76,230 @@ function PosterCard({ name, tplId, onOpen }: { name: string; tplId: string; onOp
     </button>
   );
 }
-const STEPS = [
-  ['01', 'Busca', 'Escribe cualquier artista.'],
-  ['02', 'Analiza', 'Leemos su audio real: BPM, tono, energía, brillo.'],
-  ['03', 'Convierte', 'Te devolvemos su póster, su red y sus emergentes.'],
-];
 
-// Landing scrollable con MUCHAS animaciones de scroll (GSAP ScrollTrigger):
-// barra de progreso, títulos con máscara, números en parallax, visuales que
-// escalan, galería horizontal con pin y pasos que entran desde los lados.
+// La landing es la FUNDA DE UNA MIXTAPE: cara A (tracklist con la cinta
+// desenrollándose al scroll), el muro de pósters, y cara B (tu turno).
+// Nada de plantilla SaaS: sin stats inventadas, sin grid de features, sin cards.
 export default function Landing({ onSearch }: { onSearch: (q: string) => void }) {
   const [q, setQ] = useState('');
+  const [menu, setMenu] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const go = () => { if (q.trim()) onSearch(q.trim()); };
+  const goTo = (e: MouseEvent<HTMLAnchorElement>, h: string) => {
+    e.preventDefault(); setMenu(false);
+    document.querySelector(h)?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (reduced) return;
     const ctx = gsap.context(() => {
-      // barra de progreso de scroll (arriba)
-      gsap.to('.land-progress', {
-        scaleX: 1, ease: 'none',
-        scrollTrigger: { trigger: root.current, start: 'top top', end: 'bottom bottom', scrub: true },
+      // carga del hero: nav baja, bottom sube, titular clip-reveal
+      gsap.utils.toArray<HTMLElement>('[data-load="down"]').forEach((el) => {
+        const i = parseFloat(el.style.getPropertyValue('--i') || '0');
+        gsap.from(el, { opacity: 0, y: -20, duration: 0.5, delay: i * 0.1, ease: 'power3.out' });
+      });
+      gsap.utils.toArray<HTMLElement>('[data-load="up"]').forEach((el) => {
+        const i = parseFloat(el.style.getPropertyValue('--i') || '0');
+        gsap.from(el, { opacity: 0, y: 32, duration: 0.6, delay: i * 0.12, ease: 'power3.out' });
+      });
+      gsap.utils.toArray<HTMLElement>('.h-word').forEach((el, i) => {
+        gsap.from(el, { yPercent: 110, duration: 0.7, delay: 0.4 + i * 0.14, ease: 'power4.out' });
       });
 
-      // reveals genéricos (fade + subida)
+      // scrollytelling: la CINTA se desenrolla bajando por la cara A
+      gsap.fromTo('.tape-line', { scaleY: 0 }, { scaleY: 1, ease: 'none',
+        scrollTrigger: { trigger: '.side-a', start: 'top 70%', end: 'bottom 60%', scrub: 0.6 } });
+
       gsap.utils.toArray<HTMLElement>('.reveal').forEach((el) => {
-        gsap.from(el, {
-          opacity: 0, y: 46, duration: 0.9, ease: 'power3.out',
-          scrollTrigger: { trigger: el, start: 'top 86%' },
-        });
+        gsap.from(el, { opacity: 0, y: 44, duration: 0.8, ease: 'power3.out',
+          scrollTrigger: { trigger: el, start: 'top 86%' } });
       });
-
-      // títulos que suben desde detrás de una máscara
       gsap.utils.toArray<HTMLElement>('.mh').forEach((el) => {
-        gsap.from(el, {
-          yPercent: 115, duration: 1, ease: 'power4.out',
-          scrollTrigger: { trigger: el, start: 'top 90%' },
-        });
+        gsap.from(el, { yPercent: 115, duration: 0.9, ease: 'power4.out',
+          scrollTrigger: { trigger: el, start: 'top 90%' } });
+      });
+      // sellos de goma: se estampan al llegar
+      gsap.utils.toArray<HTMLElement>('.stamp').forEach((el, i) => {
+        gsap.from(el, { scale: 2.2, opacity: 0, rotate: -18, duration: 0.4, delay: i * 0.12, ease: 'power4.in',
+          scrollTrigger: { trigger: el.closest('.track'), start: 'top 62%' } });
+      });
+      // los hilos rojos de la red se dibujan al llegar
+      gsap.utils.toArray<SVGPathElement>('.web-lines path').forEach((el, i) => {
+        const len = el.getTotalLength();
+        gsap.fromTo(el, { strokeDasharray: len, strokeDashoffset: len },
+          { strokeDashoffset: 0, duration: 1, delay: i * 0.18, ease: 'power2.out',
+            scrollTrigger: { trigger: '.web', start: 'top 75%' } });
       });
 
-      // parallax lento
-      gsap.utils.toArray<HTMLElement>('.parallax').forEach((el) => {
-        gsap.to(el, { yPercent: -12, ease: 'none',
-          scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: true } });
-      });
-
-      // números gigantes en parallax (van más rápido que el texto)
-      gsap.utils.toArray<HTMLElement>('.lf-num').forEach((el) => {
-        gsap.to(el, { yPercent: -60, ease: 'none',
-          scrollTrigger: { trigger: el.closest('.land-feat'), start: 'top bottom', end: 'bottom top', scrub: true } });
-      });
-
-      // visuales que escalan y aparecen al entrar
-      gsap.utils.toArray<HTMLElement>('.lf-visual').forEach((el) => {
-        gsap.fromTo(el, { scale: 0.8, opacity: 0.35 }, { scale: 1, opacity: 1, ease: 'none',
-          scrollTrigger: { trigger: el, start: 'top 92%', end: 'top 45%', scrub: true } });
-      });
-
-      // el grafo gira SOLO con el scroll
-      const g = root.current?.querySelector('.mock-graph');
-      if (g) gsap.to(g, { rotate: 300, ease: 'none',
-        scrollTrigger: { trigger: g, start: 'top bottom', end: 'bottom top', scrub: 1 } });
-
-      // pasos que entran alternando desde izquierda/derecha
-      gsap.utils.toArray<HTMLElement>('.step').forEach((el, i) => {
-        gsap.from(el, { xPercent: i % 2 ? 40 : -40, opacity: 0, duration: 0.9, ease: 'power3.out',
-          scrollTrigger: { trigger: el, start: 'top 85%' } });
-      });
-
-      // GALERÍA HORIZONTAL con pin: se desplaza en horizontal al hacer scroll
+      // galería horizontal con pin
       const t = track.current;
       if (t) {
         const len = () => t.scrollWidth - window.innerWidth;
-        gsap.to(t, {
-          x: () => -len(), ease: 'none',
-          scrollTrigger: {
-            trigger: '.land-gallery', start: 'top top', end: () => '+=' + len(),
-            scrub: 1, pin: true, anticipatePin: 1, invalidateOnRefresh: true,
-          },
-        });
+        gsap.to(t, { x: () => -len(), ease: 'none',
+          scrollTrigger: { trigger: '.land-gallery', start: 'top top', end: () => '+=' + len(),
+            scrub: 1, pin: true, anticipatePin: 1, invalidateOnRefresh: true } });
       }
     }, root);
     return () => ctx.revert();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const tilt = (e: MouseEvent<HTMLDivElement>) => {
-    const el = e.currentTarget, r = el.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
-    el.style.transform = `perspective(900px) rotateY(${x * 16}deg) rotateX(${-y * 16}deg)`;
-  };
-  const untilt = (e: MouseEvent<HTMLDivElement>) => { e.currentTarget.style.transform = ''; };
-
   const search = (
-    <div className="land-search reveal">
-      <input className="url-input" placeholder="Busca un artista…" value={q}
+    <div className="land-search">
+      <input placeholder="ESCRIBE UN ARTISTA…" value={q}
         onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') go(); }} />
-      <button className="btn-remix" onClick={go}>► ENTRAR</button>
+      <button className="btn-phys" onClick={go}>● REC</button>
     </div>
   );
 
   return (
     <div className="land" ref={root}>
-      <div className="land-progress" />
+      {/* HERO: vídeo de casete + titular apilado. Nav mínimo (nada de logo-links-CTA) */}
+      <section className="land-hero" id="top">
+        <video className="hero-video" src={`${import.meta.env.BASE_URL}video/cassette.mp4`}
+          autoPlay muted loop playsInline aria-hidden />
+        <div className="hero-tint" aria-hidden />
 
-      {/* HERO */}
-      <section className="land-hero">
-        <div className="neo-kicker reveal">descubre · explora · conviértelo en <b>póster</b></div>
-        <h1 className="neo-title reveal" data-text="CHUPITBEATS">CHUPITBEATS</h1>
-        <p className="neo-sub reveal">
-          Busca un artista y conviértelo en un <b>póster editorial</b>: su historia,
-          su <b>mapa de colaboraciones</b> y los <b>emergentes</b> que suenan como él.
-        </p>
-        {search}
-        <div className="presets reveal">
-          <span className="muted">prueba:</span>
-          {PRESETS.map(p => <button key={p} className="preset-chip" onClick={() => onSearch(p)}>{p}</button>)}
-        </div>
-        <div className="land-scroll">↓ scroll</div>
-      </section>
+        <nav className="h-nav">
+          <a className="h-logo" href="#top" data-load="down" style={{ ['--i']: 0 } as CSSProperties}
+            onClick={e => goTo(e, '#top')}><span className="h-dot" />CHUPIT<b>BEATS</b></a>
+          <div className="h-side" data-load="down" style={{ ['--i']: 1 } as CSSProperties}>
+            <span className="h-tape-info">CARA A · 90 MIN · CrO₂</span>
+            <button className="h-burger" onClick={() => setMenu(true)} aria-label="índice"><span /><span /><span /></button>
+          </div>
+        </nav>
 
-      {/* banda marquee */}
-      <div className="land-marquee" aria-hidden>
-        <div className="mq-track">
-          {Array.from({ length: 2 }).map((_, k) => (
-            <span key={k}>
-              DESCUBRE <b>★</b> POR SONIDO <b>★</b> CONVIÉRTELO EN PÓSTER <b>★</b> EXPLORA LA RED <b>★</b> EMERGENTES <b>★</b>{' '}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* 01 · sonido */}
-      <section className="land-feat">
-        <div className="lf-text">
-          <span className="lf-num">01</span>
-          <h2 className="mask-h"><span className="mh">Descubre por <em>sonido</em></span></h2>
-          <p className="reveal">Analizamos el audio real de un artista (no metadatos) y te sacamos artistas emergentes que suenan como él.</p>
-        </div>
-        <div className="lf-visual parallax">
-          <div className="eq">{Array.from({ length: 11 }).map((_, i) => <span key={i} style={{ animationDelay: `${i * 0.09}s` }} />)}</div>
-        </div>
-      </section>
-
-      {/* 02 · póster */}
-      <section className="land-feat alt">
-        <div className="lf-text">
-          <span className="lf-num">02</span>
-          <h2 className="mask-h"><span className="mh">Conviértelo en <em>póster</em></span></h2>
-          <p className="reveal">Cada artista se vuelve un póster editorial neo-psicodélico: su foto, sus datos y una frase generada por IA. Descárgalo y compártelo.</p>
-        </div>
-        <div className="lf-visual">
-          <div className="mock-poster tilt" onMouseMove={tilt} onMouseLeave={untilt}>
-            <span className="mp-star" />
-            <span className="mp-name">TU<br />ARTISTA</span>
+        <div className="h-bottom">
+          <div className="h-rowA">
+            <p className="h-tag" data-load="up" style={{ ['--i']: 2 } as CSSProperties}>
+              GRABADO EN CASA<br />SIN PERMISO DE NADIE<br />REBOBINA ANTES DE DEVOLVER
+            </p>
+            <div className="h-search" data-load="up" style={{ ['--i']: 3 } as CSSProperties}>{search}</div>
+          </div>
+          <div className="h-rowB">
+            <p className="h-desc" data-load="up" style={{ ['--i']: 4 } as CSSProperties}>
+              ESTO NO ES UN DASHBOARD. ES UNA FOTOCOPIADORA DE LEYENDAS: METES UN NOMBRE Y SACAS SU PÓSTER.
+            </p>
+            <h1 className="h-title">
+              {['SONIDO', 'HECHO', 'PÓSTER'].map((w, i) => (
+                <span className="mask-h" key={w}><span className={`h-word${i === 2 ? ' red' : ''}`}>{w}</span></span>
+              ))}
+            </h1>
           </div>
         </div>
       </section>
 
-      {/* GALERÍA HORIZONTAL con pin */}
-      <section className="land-gallery">
+      {/* menú overlay (índice de la funda) */}
+      {menu && (
+        <div className="h-menu">
+          <div className="h-nav">
+            <a className="h-logo" href="#top" onClick={e => goTo(e, '#top')}><span className="h-dot" />CHUPIT<b>BEATS</b></a>
+            <button className="h-close" onClick={() => setMenu(false)} aria-label="cerrar">✕</button>
+          </div>
+          <nav className="h-menu-links">
+            {NAV.map(([t, h]) => <a key={t} href={h} onClick={e => goTo(e, h)}>{t}</a>)}
+          </nav>
+          <div className="h-menu-foot">
+            <div className="presets">
+              <span className="muted">prueba:</span>
+              {PRESETS.map(p => <button key={p} className="preset-chip" onClick={() => onSearch(p)}>{p}</button>)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* marquee tinta */}
+      <div className="land-marquee" aria-hidden>
+        <div className="mq-track">
+          {Array.from({ length: 2 }).map((_, k) => (
+            <span key={k}>DESCUBRE <b>◆</b> POR SONIDO <b>◆</b> PÓSTER <b>◆</b> TIRA DEL HILO <b>◆</b> UNDERGROUND <b>◆</b>{' '}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* CARA A · tracklist con la cinta desenrollándose */}
+      <section className="side-a" id="caraa">
+        <div className="side-head">
+          <span className="side-strip">CARA A · LO QUE HACE ESTA CINTA</span>
+        </div>
+        <span className="tape-line" aria-hidden />
+
+        <article className="track" id="descubre">
+          <span className="tk-no" aria-hidden>01</span>
+          <div className="tk-body">
+            <div className="tk-time">PISTA 01 — 3:42</div>
+            <h2 className="mask-h"><span className="mh">DESCUBRE POR <em>SONIDO</em></span></h2>
+            <p className="tk-copy reveal">
+              Escuchamos el audio de verdad, no las etiquetas de la discográfica.
+              Si suena parecido, entra. Si no, fuera.
+            </p>
+          </div>
+          <div className="tk-visual stamps" aria-hidden>
+            <span className="stamp">BPM 128</span>
+            <span className="stamp">TONO LAm</span>
+            <span className="stamp">BRILLO 9/10</span>
+            <span className="stamp big">ANALIZADO ✓</span>
+          </div>
+        </article>
+
+        <article className="track" id="poster">
+          <span className="tk-no" aria-hidden>02</span>
+          <div className="tk-body">
+            <div className="tk-time">PISTA 02 — 2:58</div>
+            <h2 className="mask-h"><span className="mh">SU HISTORIA, <em>FOTOCOPIADA</em></span></h2>
+            <p className="tk-copy reveal">
+              Fechas, temas, colaboraciones y una frase con alma. Todo grapado
+              en un póster que puedes bajarte y pegar donde te dejen.
+            </p>
+          </div>
+          <div className="tk-visual">
+            <PosterCard name="QUEVEDO" tplId="scream" onOpen={() => onSearch('Quevedo')} />
+          </div>
+        </article>
+
+        <article className="track" id="red">
+          <span className="tk-no" aria-hidden>03</span>
+          <div className="tk-body">
+            <div className="tk-time">PISTA 03 — 4:15</div>
+            <h2 className="mask-h"><span className="mh">TIRA DEL <em>HILO</em></span></h2>
+            <p className="tk-copy reveal">
+              De feat en feat hasta el fondo del underground. Cada colaboración
+              es un hilo; al final del hilo hay otro póster.
+            </p>
+          </div>
+          <div className="tk-visual web" aria-hidden>
+            <svg className="web-lines" viewBox="0 0 300 220" fill="none">
+              <path d="M40 40 L150 110" stroke="#d6261b" strokeWidth="2" />
+              <path d="M150 110 L250 50" stroke="#d6261b" strokeWidth="2" />
+              <path d="M150 110 L70 180" stroke="#d6261b" strokeWidth="2" />
+              <path d="M150 110 L240 180" stroke="#d6261b" strokeWidth="2" />
+              <path d="M40 40 L250 50" stroke="#d6261b" strokeWidth="1.2" />
+            </svg>
+            <span className="web-name" style={{ top: '8%', left: '4%' }}>QUEVEDO</span>
+            <span className="web-name center" style={{ top: '44%', left: '38%' }}>BIZARRAP</span>
+            <span className="web-name" style={{ top: '10%', right: '2%' }}>DUKI</span>
+            <span className="web-name" style={{ top: '76%', left: '10%' }}>ROSALÍA</span>
+            <span className="web-name" style={{ top: '76%', right: '4%' }}>C. TANGANA</span>
+          </div>
+        </article>
+      </section>
+
+      {/* marquee ácido */}
+      <div className="land-marquee alt" aria-hidden>
+        <div className="mq-track">
+          {Array.from({ length: 2 }).map((_, k) => (
+            <span key={k}>MIXTAPE <b>◆</b> CARA A <b>◆</b> CARA B <b>◆</b> DOLBY <b>◆</b> 90 MIN <b>◆</b> HI-FI <b>◆</b>{' '}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* muro rojo: pósters colgados con cinta adhesiva */}
+      <section className="land-gallery" id="galeria">
         <div className="gallery-track" ref={track}>
           <div className="g-intro">
-            <span className="lf-num">★</span>
-            <h2 className="mask-h"><span className="mh">Un póster<br />por artista</span></h2>
+            <h2 className="mask-h"><span className="mh">Un póster<br /><em>por artista</em></span></h2>
             <p>desliza →</p>
           </div>
           {GALLERY.map(({ name, tpl }) => (
@@ -246,41 +308,24 @@ export default function Landing({ onSearch }: { onSearch: (q: string) => void })
         </div>
       </section>
 
-      {/* 03 · red */}
-      <section className="land-feat">
-        <div className="lf-text">
-          <span className="lf-num">03</span>
-          <h2 className="mask-h"><span className="mh">Explora la <em>red</em></span></h2>
-          <p className="reveal">Un mapa de colaboraciones tipo constelación: salta de artista en artista a través de sus features.</p>
+      {/* CARA B · tu turno: la etiqueta en blanco */}
+      <section className="side-b" id="carab">
+        <div className="side-head">
+          <span className="side-strip">CARA B · TU TURNO</span>
         </div>
-        <div className="lf-visual parallax">
-          <div className="mock-graph">
-            <span className="mg-center" />
-            {Array.from({ length: 9 }).map((_, i) => (
-              <span key={i} className="mg-node" style={{ transform: `rotate(${i * 40}deg) translateX(92px)` }} />
-            ))}
+        <h2 className="sb-line mask-h"><span className="mh">LA CINTA SE ACABÓ.<br />GRABA LA <em>TUYA</em>.</span></h2>
+        <div className="sb-label reveal">
+          <span className="sb-side">B</span>
+          <div className="sb-fields">
+            <span className="sb-caption">ARTISTA:</span>
+            {search}
+            <div className="presets">
+              <span className="muted">o roba uno:</span>
+              {PRESETS.map(p => <button key={p} className="preset-chip" onClick={() => onSearch(p)}>{p}</button>)}
+            </div>
           </div>
         </div>
-      </section>
-
-      {/* CÓMO FUNCIONA · pasos desde los lados */}
-      <section className="land-steps">
-        <h2 className="mask-h reveal"><span className="mh">Cómo funciona</span></h2>
-        <div className="steps-grid">
-          {STEPS.map(([n, t, d]) => (
-            <div className="step" key={n}>
-              <span className="step-n">{n}</span>
-              <h3>{t}</h3>
-              <p>{d}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="land-cta reveal">
-        <h2>Busca tu artista</h2>
-        {search}
+        <p className="sb-foot">CHUPITBEATS · HECHO A MANO · REBOBINA ANTES DE DEVOLVER</p>
       </section>
     </div>
   );

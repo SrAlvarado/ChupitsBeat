@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>K-LOFI · radio generativa</title>
+    <meta name="description" content="Radio generativa escrita en Strudel: lofi, house y schranz, cada una con su escenario 3D." />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="shell">
+      <div id="stage-row">
+        <div id="stage" role="img" aria-label="Escena 3D que cambia con la emisora: una habitación de estudio, una playa al atardecer o un callejón pintado">
+          <div id="flash" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <section id="console" aria-label="Controles de la radio generativa">
+        <div class="console-head">
+          <h1><span class="dot" aria-hidden="true"></span>K-LOFI</h1>
+          <canvas id="viz" aria-hidden="true"></canvas>
+          <button type="button" id="play" class="primary" aria-pressed="false">
+            <span class="ico" aria-hidden="true">▶</span> Play
+          </button>
+          <button type="button" id="retune" class="secondary">
+            <span class="ico" aria-hidden="true">⟳</span> Otra toma
+          </button>
+          <button type="button" id="code-toggle" class="quiet" aria-expanded="false" aria-controls="code-panel">
+            <span class="ico" aria-hidden="true">{ }</span> Código
+          </button>
+          <button type="button" id="console-toggle" class="quiet" aria-expanded="true" aria-controls="console-body">
+            <span class="ico" aria-hidden="true">▾</span> Ocultar
+          </button>
+          <p id="now-playing" role="status">fuera de antena — pulsa play</p>
+        </div>
+
+        <div id="console-body">
+          <fieldset id="genre-set">
+            <legend>Emisora</legend>
+            <button type="button" class="genre" data-genre="lofi" aria-pressed="true">
+              <b>Lofi</b><small>habitación · 74 bpm</small>
+            </button>
+            <button type="button" class="genre" data-genre="house" aria-pressed="false">
+              <b>House</b><small>playa · 124 bpm</small>
+            </button>
+            <button type="button" class="genre" data-genre="schranz" aria-pressed="false">
+              <b>Schranz</b><small>callejón · 152 bpm</small>
+            </button>
+          </fieldset>
+
+          <div class="console-grid">
+            <fieldset>
+              <legend>Ambiente</legend>
+              <button type="button" class="chip" aria-pressed="true" data-mood="lluvia">lluvia</button>
+              <button type="button" class="chip" aria-pressed="true" data-mood="acogedor">acogedor</button>
+              <button type="button" class="chip" aria-pressed="false" data-mood="onírico">onírico</button>
+              <button type="button" class="chip" aria-pressed="false" data-mood="concentrado">concentrado</button>
+              <button type="button" class="chip" aria-pressed="false" data-mood="somnoliento">somnoliento</button>
+              <button type="button" class="chip" aria-pressed="false" data-mood="nostálgico">nostálgico</button>
+            </fieldset>
+
+            <fieldset>
+              <legend>Diales</legend>
+              <div class="slider-row">
+                <label for="dial-tempo">tempo</label>
+                <input type="range" id="dial-tempo" min="60" max="92" value="74" step="1" />
+                <output id="out-tempo" for="dial-tempo">74 bpm</output>
+              </div>
+              <div class="slider-row">
+                <label for="dial-tape">textura</label>
+                <input type="range" id="dial-tape" min="0" max="100" value="45" step="5" />
+                <output id="out-tape" for="dial-tape">45%</output>
+              </div>
+              <div class="slider-row">
+                <label for="dial-rain">ambiente</label>
+                <input type="range" id="dial-rain" min="0" max="100" value="30" step="5" />
+                <output id="out-rain" for="dial-rain">30%</output>
+              </div>
+            </fieldset>
+          </div>
+
+          <fieldset id="dj">
+            <legend>DJ</legend>
+            <div id="dj-ask">
+              <button type="button" id="dj-compose" class="secondary">
+                <span class="ico" aria-hidden="true">✳</span> Componer con Claude
+              </button>
+              <p class="hint">
+                Claude lee la emisora, el ambiente y los diales, y firma el
+                próximo tema directamente en Strudel — la radio lo evalúa en vivo.
+              </p>
+            </div>
+            <p id="dj-line" role="status"></p>
+          </fieldset>
+        </div>
+
+        <div id="code-panel" hidden>
+          <div class="code-head">
+            <span>strudel · lo que está sonando</span>
+            <button type="button" id="code-run" class="quiet"><span class="ico" aria-hidden="true">▸</span> Evaluar (Ctrl+Enter)</button>
+          </div>
+          <textarea id="code" spellcheck="false" aria-label="Código Strudel del tema en antena"></textarea>
+        </div>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

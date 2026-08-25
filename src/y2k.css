@@ -1,0 +1,315 @@
+/* ============================================================
+   ChupitBeats — la web es la FUNDA DE UNA MIXTAPE (zine 2000 + walkman)
+   Papel + tinta + rojo. Colores planos, filetes de periódico, cinta
+   adhesiva. Sin cards redondeadas, sin degradados, sin glassmorfismo.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Michroma&family=Martian+Mono:wght@400;700&family=VT323&display=swap');
+@font-face { font-family: 'DSEG7'; src: url('https://cdn.jsdelivr.net/npm/dseg@0.46.0/fonts/DSEG7-Classic/DSEG7Classic-Bold.woff2') format('woff2'); font-display: swap; }
+
+.app-landing {
+  --paper: #e8e2d2; --paper2: #dcd5c0; --ink: #141412; --red: #d6261b;
+  --acid: #c6ff2e; --led: #35ff6a; --tape: #4a3a28;
+  --disp: 'Big Shoulders Display', 'Arial Black', sans-serif;
+  --tech: 'Michroma', 'Eurostile', sans-serif;
+  --mono: 'Martian Mono', monospace;
+  --lcd: 'DSEG7', 'VT323', monospace;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.land { position: relative; z-index: 3; }
+.land section { position: relative; overflow: hidden; }
+
+/* grano de fotocopia sutil (patrón, no degradado) */
+.land::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.05;
+  background-image: radial-gradient(var(--ink) 1px, transparent 1.3px); background-size: 5px 5px; }
+.land > * { position: relative; z-index: 1; }
+
+/* ---------- PIEZAS ---------- */
+.btn-phys { font-family: var(--mono); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  background: var(--ink); color: var(--paper); border: 3px solid var(--ink); padding: 12px 18px; cursor: pointer;
+  box-shadow: 5px 5px 0 var(--red); transition: transform .06s, box-shadow .06s; }
+.btn-phys:hover { color: var(--acid); }
+.btn-phys:active { transform: translate(5px, 5px); box-shadow: 0 0 0 var(--red); }
+
+.sticker { display: inline-block; font-family: var(--tech); text-transform: uppercase; font-size: 0.8rem;
+  background: var(--paper); color: var(--ink); border: 3px solid var(--ink); padding: 5px 11px;
+  box-shadow: 4px 4px 0 var(--ink); }
+.sticker.red { background: var(--red); color: var(--paper); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 50% { opacity: 0.2; } }
+@keyframes mq { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+.mask-h { overflow: hidden; display: block; }
+.mh { display: inline-block; will-change: transform; }
+
+/* ---------- HERO (vídeo de casete; nav mínimo: logo + info de cinta) ---------- */
+.land-hero { position: relative; min-height: 100svh; display: flex; flex-direction: column;
+  justify-content: space-between; padding: 0; }
+.hero-video { width: 100%; height: 100%; object-fit: cover; }
+.hero-tint { pointer-events: none; background: rgba(232,226,210,0.52); }
+.land-hero > * { position: relative; z-index: 2; }
+.land-hero > .hero-video { position: absolute; inset: 0; z-index: 0; }
+.land-hero > .hero-tint { position: absolute; inset: 0; z-index: 1; }
+@media (prefers-reduced-motion: reduce) { .hero-video { display: none; } }
+
+.h-nav { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 22px 0; }
+.h-logo { display: flex; align-items: center; gap: 10px; font-family: var(--disp); font-weight: 900; font-size: 1.45rem;
+  text-transform: uppercase; color: var(--ink); text-decoration: none; }
+.h-logo b { color: var(--red); }
+.h-dot { width: 32px; height: 32px; border: 2px solid var(--red); border-radius: 50%; display: grid; place-items: center; }
+.h-dot::after { content: ''; width: 10px; height: 10px; background: var(--red); border-radius: 50%; }
+.h-side { display: flex; align-items: center; gap: 14px; }
+.h-tape-info { font-family: var(--mono); font-weight: 700; font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink); background: var(--paper); border: 2px solid var(--ink);
+  padding: 6px 10px; box-shadow: 3px 3px 0 var(--ink); }
+.h-burger { width: 36px; height: 36px; border-radius: 50%; background: var(--ink); border: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.h-burger span { width: 16px; height: 2px; background: var(--paper); }
+
+.h-bottom { display: flex; flex-direction: column; gap: 22px; padding: 0 22px 30px; }
+.h-rowA { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.h-tag { font-family: var(--mono); font-weight: 700; font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; line-height: 1.5; text-align: left;
+  background: var(--paper); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); padding: 8px 10px; }
+.h-rowA .land-search { width: min(430px, 100%); }
+.h-rowB { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.h-desc { width: 150px; flex-shrink: 0; font-family: var(--mono); font-weight: 700; font-size: 9px;
+  letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.5; text-align: left;
+  background: var(--paper); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); padding: 8px 10px; }
+.h-title { display: flex; flex-direction: column; align-items: flex-end; font-family: var(--disp); font-weight: 900;
+  font-size: clamp(2.4rem, 9vw, 9rem); line-height: 0.88; text-transform: uppercase; color: var(--ink);
+  text-align: right; margin: 0; }
+.h-title .mask-h { overflow: hidden; display: block; }
+.h-word { display: inline-block; -webkit-text-stroke: 2px var(--paper); paint-order: stroke fill; }
+.h-word.red { color: var(--red); }
+
+@media (min-width: 640px) {
+  .h-nav { padding: 22px 34px 0; }
+  .h-bottom { padding: 0 34px 36px; }
+  .h-tag, .h-desc { font-size: 12px; }
+  .h-desc { width: 200px; }
+}
+@media (min-width: 768px) {
+  .h-nav { padding: 24px 48px 0; }
+  .h-bottom { gap: 40px; padding: 0 48px 44px; }
+  .h-tag, .h-desc { font-size: 13px; }
+  .h-desc { width: 300px; text-align: right; }
+}
+
+/* menú overlay (índice de la funda) */
+.h-menu { position: fixed; inset: 0; z-index: 60; background: var(--paper); display: flex; flex-direction: column;
+  padding-bottom: 30px; }
+.h-menu .h-nav { padding-top: 20px; }
+.h-close { width: 36px; height: 36px; border-radius: 50%; background: var(--ink); color: var(--paper); border: 0;
+  cursor: pointer; font-size: 1rem; line-height: 1; display: grid; place-items: center; }
+.h-menu-links { display: flex; flex-direction: column; gap: 26px; margin-top: 60px; padding: 0 24px; }
+.h-menu-links a { font-family: var(--disp); font-weight: 900; font-size: clamp(2rem, 8vw, 3.4rem);
+  text-transform: uppercase; color: var(--ink); text-decoration: none; line-height: 0.9; }
+.h-menu-links a:hover { color: var(--red); }
+.h-menu-foot { margin-top: auto; padding: 0 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* buscador + presets */
+.land-search { display: flex; width: min(560px, 100%); }
+.land-search input { flex: 1; font-family: var(--mono); font-size: 1rem; background: #fff; color: var(--ink);
+  border: 3px solid var(--ink); border-right: 0; padding: 13px 15px; outline: none; min-width: 0; }
+.land-search input::placeholder { color: #8a8371; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets .muted { font-family: var(--mono); font-size: 0.85rem; color: var(--ink); }
+.preset-chip { font-family: var(--mono); font-weight: 700; font-size: 0.82rem; text-transform: uppercase;
+  background: var(--paper); color: var(--ink); border: 2px solid var(--ink); border-radius: 0;
+  padding: 6px 12px; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
+.preset-chip:hover { background: var(--ink); color: var(--acid); }
+
+/* ---------- MARQUEES ---------- */
+.land-marquee { overflow: hidden; padding: 12px 0; white-space: nowrap; background: var(--ink);
+  border-top: 4px solid var(--ink); border-bottom: 4px solid var(--ink); }
+.land-marquee span { font-family: var(--disp); font-weight: 900; text-transform: uppercase;
+  font-size: clamp(1.3rem, 3.6vw, 2.2rem); color: var(--paper); }
+.land-marquee b { color: var(--acid); margin: 0 10px; }
+.land-marquee.alt { background: var(--acid); }
+.land-marquee.alt span { color: var(--ink); } .land-marquee.alt b { color: var(--red); }
+.land-marquee .mq-track { display: inline-block; will-change: transform; animation: mq 24s linear infinite; }
+.land-marquee:hover .mq-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .land-marquee .mq-track { animation: none; } }
+
+/* ---------- CARA A · tracklist (scrollytelling: la cinta se desenrolla) ---------- */
+.side-head { padding: 26px 6vw 0; }
+.side-strip { display: inline-block; font-family: var(--tech); font-size: clamp(0.7rem, 1.6vw, 0.95rem);
+  text-transform: uppercase; letter-spacing: 0.12em; background: var(--ink); color: var(--paper);
+  padding: 8px 14px; transform: rotate(-0.6deg); }
+
+.side-a { background: var(--paper); border-bottom: 4px solid var(--ink); }
+/* la CINTA marrón que baja con el scroll */
+.tape-line { position: absolute; left: max(3vw, 14px); top: 90px; bottom: 40px; width: 7px;
+  background: var(--tape); transform-origin: top; box-shadow: 2px 0 0 rgba(20,20,18,0.25); }
+
+.track { position: relative; min-height: 82vh; display: grid; grid-template-columns: 1.1fr 0.9fr;
+  align-items: center; gap: 40px; padding: 10vh 6vw 10vh calc(max(3vw, 14px) + 40px); }
+.track + .track { border-top: 2px solid rgba(20,20,18,0.2); }
+@media (max-width: 860px) { .track { grid-template-columns: 1fr; gap: 22px; min-height: auto; } }
+
+/* folio gigante detrás del texto (tinta hueca, sin caja) */
+.tk-no { position: absolute; top: 4vh; right: 4vw; font-family: var(--disp); font-weight: 900;
+  font-size: clamp(8rem, 24vw, 20rem); line-height: 0.8; color: transparent;
+  -webkit-text-stroke: 3px rgba(214,38,27,0.35); pointer-events: none; }
+.tk-time { font-family: var(--mono); font-weight: 700; font-size: 0.75rem; letter-spacing: 0.1em;
+  color: var(--red); text-transform: uppercase; margin-bottom: 10px; }
+.tk-body h2 { font-family: var(--disp); font-weight: 900; text-transform: uppercase; color: var(--ink);
+  font-size: clamp(2.6rem, 7.5vw, 6rem); line-height: 0.85; margin: 0 0 16px; }
+.tk-body h2 em { font-style: normal; color: var(--red); }
+.tk-copy { font-family: var(--mono); line-height: 1.65; max-width: 480px; font-size: 0.95rem; }
+.tk-visual { display: flex; align-items: center; justify-content: center; position: relative; }
+
+/* sellos de goma (nada de gráficas): tinta roja estampada en el papel */
+.stamps { flex-wrap: wrap; gap: 18px; min-height: 260px; align-content: center; }
+.stamp { font-family: var(--tech); font-size: clamp(0.8rem, 1.6vw, 1.1rem); text-transform: uppercase;
+  color: var(--red); border: 3px solid var(--red); padding: 10px 16px; letter-spacing: 0.08em;
+  transform: rotate(-6deg); opacity: 0.85; }
+.stamp:nth-child(2) { transform: rotate(4deg); }
+.stamp:nth-child(3) { transform: rotate(-2deg); }
+.stamp.big { font-size: clamp(1.2rem, 2.6vw, 1.9rem); border-width: 4px; transform: rotate(-10deg);
+  color: var(--ink); border-color: var(--ink); border-style: double; }
+
+/* el hilo rojo: nombres reales conectados (tablón de detective, no "graph viz") */
+.web { position: relative; width: min(90vw, 420px); aspect-ratio: 300 / 220; }
+.web-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.web-name { position: absolute; font-family: var(--mono); font-weight: 700; font-size: 0.72rem;
+  letter-spacing: 0.06em; background: var(--paper); border: 2px solid var(--ink); padding: 4px 8px;
+  box-shadow: 3px 3px 0 var(--ink); transform: rotate(-2deg); }
+.web-name.center { background: var(--ink); color: var(--paper); transform: rotate(2deg); }
+
+/* ---------- MURO ROJO: pósters colgados con cinta adhesiva ---------- */
+.land-gallery { height: 100vh; overflow: hidden; display: flex; align-items: center;
+  background: var(--red); border-bottom: 4px solid var(--ink); }
+.gallery-track { display: flex; align-items: center; gap: 44px; padding: 0 6vw; will-change: transform; }
+.g-intro { flex: 0 0 auto; width: min(72vw, 420px); }
+.g-intro h2 { font-family: var(--disp); font-weight: 900; font-size: clamp(2.6rem, 8vw, 5.5rem); line-height: 0.82;
+  text-transform: uppercase; color: var(--paper); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.g-intro h2 em { font-style: normal; color: var(--ink); -webkit-text-stroke: 0; }
+.g-intro p { color: var(--paper); font-family: var(--mono); font-weight: 700; margin-top: 14px; letter-spacing: 2px; }
+/* sin celdas-card: el póster cuelga directamente con dos tiras de celo */
+.g-card { flex: 0 0 auto; position: relative; width: min(66vw, 300px); padding: 0; border: 0; background: none;
+  cursor: pointer; transition: transform .2s; }
+.g-card:nth-child(odd) { transform: rotate(-1.6deg); }
+.g-card:nth-child(even) { transform: rotate(1.4deg); }
+.g-card:hover { transform: rotate(0deg) translateY(-8px); }
+.g-card::before, .g-card::after { content: ''; position: absolute; top: -14px; width: 84px; height: 30px;
+  background: rgba(220,213,192,0.85); border-left: 1px solid rgba(20,20,18,0.25);
+  border-right: 1px solid rgba(20,20,18,0.25); z-index: 4; }
+.g-card::before { left: -22px; transform: rotate(-38deg); }
+.g-card::after { right: -22px; transform: rotate(38deg); }
+.g-card .poster.fmt-poster { width: 100%; border: 2px solid var(--ink); box-shadow: 0 16px 34px rgba(0,0,0,0.45); }
+.g-card .g-skel { position: absolute; inset: 0; background: #222; }
+/* el póster del track 02 cuelga igual, sobre papel */
+.track .g-card { width: min(60vw, 280px); }
+.track .g-card::before, .track .g-card::after { background: rgba(198,255,46,0.55); }
+
+/* ---------- CARA B · tu turno (etiqueta en blanco, no un CTA de SaaS) ---------- */
+.side-b { background: var(--paper); padding-bottom: 60px; }
+.sb-line { font-family: var(--disp); font-weight: 900; text-transform: uppercase; color: var(--ink);
+  font-size: clamp(2.6rem, 8vw, 6.5rem); line-height: 0.85; padding: 8vh 6vw 5vh; margin: 0; }
+.sb-line em { font-style: normal; color: var(--red); }
+/* etiqueta de casete real: rayas para escribir el nombre */
+.sb-label { margin: 0 6vw; max-width: 720px; display: flex; gap: 18px; align-items: flex-start;
+  background: #f4efe0; border: 3px solid var(--ink); padding: 22px;
+  box-shadow: 8px 8px 0 var(--ink); transform: rotate(-0.5deg); }
+.sb-side { font-family: var(--disp); font-weight: 900; font-size: 3.4rem; line-height: 0.9; color: var(--red);
+  border: 3px solid var(--red); padding: 6px 16px; }
+.sb-fields { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+.sb-caption { font-family: var(--mono); font-weight: 700; font-size: 0.75rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink); border-bottom: 2px solid rgba(20,20,18,0.35);
+  padding-bottom: 4px; width: 100%; }
+.sb-foot { font-family: var(--mono); font-weight: 700; font-size: 0.7rem; letter-spacing: 0.12em;
+  text-transform: uppercase; opacity: 0.6; padding: 34px 6vw 0; }
+@media (max-width: 640px) { .sb-label { flex-direction: column; } }
+
+/* ============================================================
+   VISTA DE ARTISTA (History) — editorial de periódico: filetes,
+   no cajas. El póster y el mapa son el producto.
+   ============================================================ */
+.paper-root { min-height: 100vh; background: var(--paper); color: var(--ink); }
+.paper-root .artist-bar { position: sticky; top: 0; z-index: 30; background: var(--paper);
+  border-bottom: 4px solid var(--ink); padding: 14px 22px; }
+
+.paper-root .remix { position: static; inset: auto; background: transparent; overflow: visible; color: var(--ink); }
+.paper-root .remix-bg, .paper-root .mode-switch { display: none; }
+.paper-root .remix-inner { max-width: 1160px; margin: 0 auto; padding: 28px 20px 80px; }
+
+.paper-root .remix-hero { text-align: left; margin-bottom: 18px; }
+.paper-root .remix-hero h1 { font-family: var(--disp); font-weight: 900; background: none;
+  -webkit-text-fill-color: currentColor; color: var(--ink); text-transform: uppercase;
+  font-size: clamp(2.6rem, 7vw, 5rem); line-height: 0.9; letter-spacing: 0; }
+.paper-root .remix-hero h1 span { -webkit-text-fill-color: currentColor; color: var(--red); letter-spacing: 0; }
+.paper-root .remix-hero p { font-family: var(--mono); color: var(--ink); opacity: 0.85; }
+.paper-root .remix-hero b { color: var(--red); }
+
+/* buscador desnudo (sin caja contenedora) */
+.paper-root .drop-zone { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; }
+.paper-root .url-input { background: #fff; border: 3px solid var(--ink); border-radius: 0; color: var(--ink);
+  font-family: var(--mono); box-shadow: none; }
+.paper-root .url-input:focus { border-color: var(--red); box-shadow: none; }
+.paper-root .btn-remix { font-family: var(--mono); font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  background: var(--ink); color: var(--paper); border: 3px solid var(--ink); border-radius: 0;
+  box-shadow: 5px 5px 0 var(--red); transition: transform .06s, box-shadow .06s; }
+.paper-root .btn-remix:hover:not(:disabled) { color: var(--acid); transform: none; }
+.paper-root .btn-remix:active:not(:disabled) { transform: translate(5px,5px); box-shadow: 0 0 0 var(--red); }
+.paper-root .status.err { background: var(--red); color: var(--paper); border: 3px solid var(--ink);
+  border-radius: 0; font-family: var(--mono); }
+
+/* ficha técnica: números con filete, sin cajas */
+.paper-root .chips { gap: 26px; border-top: 4px solid var(--ink); border-bottom: 2px solid rgba(20,20,18,0.25);
+  padding: 16px 0; }
+.paper-root .chip { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--red); color: var(--ink); font-family: var(--mono); text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.08em; }
+.paper-root .chip span { font-family: var(--disp); font-weight: 900; color: var(--ink); font-size: 2.1rem; }
+
+/* destacadas como columnas de periódico */
+.paper-root .hist-tracks { gap: 0; }
+.paper-root .hist-track { background: none; border: 0; border-radius: 0; box-shadow: none;
+  border-top: 2px solid rgba(20,20,18,0.25); padding: 16px 0; }
+.paper-root .hist-track-label { font-family: var(--mono); font-weight: 700; text-transform: uppercase;
+  font-size: 0.68rem; letter-spacing: 0.08em; color: var(--red); }
+.paper-root .hist-track-title { font-family: var(--disp); font-weight: 900; text-transform: uppercase;
+  font-size: 1.5rem; color: var(--ink); }
+
+/* secciones con cabecera de filete grueso, sin caja */
+.paper-root .analysis-card { background: none; border: 0; border-radius: 0; box-shadow: none;
+  border-top: 4px solid var(--ink); padding: 18px 0 0; }
+.paper-root .analysis-card h3 { font-family: var(--disp); font-weight: 900; text-transform: uppercase;
+  color: var(--ink); font-size: 1.9rem; letter-spacing: 0; }
+.paper-root .muted { color: var(--ink); opacity: 0.65; font-family: var(--mono); }
+
+/* el mapa es producto: sala oscura funcional */
+.paper-root .graph-wrap { background: var(--ink); border: 3px solid var(--ink); border-radius: 0; }
+
+.paper-root .base-panel { background: none; border: 0; border-top: 4px solid var(--red); border-radius: 0;
+  box-shadow: none; color: var(--ink); padding-top: 14px; }
+.paper-root .base-head { font-family: var(--disp); font-weight: 900; text-transform: uppercase; color: var(--ink); }
+.paper-root .collab-track { border-bottom: 2px solid rgba(20,20,18,0.2); font-family: var(--mono); color: var(--ink); }
+
+.paper-root .btn-mini { font-family: var(--mono); font-weight: 700; text-transform: uppercase; font-size: 0.68rem;
+  background: var(--ink); color: var(--paper); border: 2px solid var(--ink); border-radius: 0;
+  box-shadow: 3px 3px 0 var(--red); letter-spacing: 0.06em; }
+.paper-root .btn-mini:hover { color: var(--acid); }
+.paper-root .btn-mini.ghost { background: var(--paper); color: var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+.paper-root .btn-mini.ghost:hover { background: var(--ink); color: var(--paper); }
+
+/* emergentes como listado editorial con filetes */
+.paper-root .rec-grid { gap: 0; }
+.paper-root .rec-card { background: none; border: 0; border-radius: 0; box-shadow: none;
+  border-top: 2px solid rgba(20,20,18,0.25); padding: 16px 0; transition: none; }
+.paper-root .rec-card:hover { transform: none; box-shadow: none; background: rgba(20,20,18,0.04); }
+.paper-root .rec-score { background: var(--red); border-radius: 0; border: 2px solid var(--ink); }
+.paper-root .rec-score::before { display: none; }
+.paper-root .rec-score span { background: transparent; color: var(--paper); font-family: var(--disp); font-weight: 900; }
+.paper-root .rec-name { font-family: var(--disp); font-weight: 900; text-transform: uppercase; color: var(--ink); }
+.paper-root .rec-meta { font-family: var(--mono); color: var(--ink); opacity: 0.7; }
+.paper-root .rec-pic { border-radius: 0; border: 2px solid var(--ink); }
+.paper-root .reason { font-family: var(--mono); color: var(--ink); background: var(--acid);
+  border: 2px solid var(--ink); border-radius: 0; }
+
+.paper-root .poster-actions .btn-mini { font-size: 0.75rem; }

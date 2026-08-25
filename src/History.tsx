@@ -543,7 +543,7 @@ export default function History({ initialQuery }: { initialQuery?: string }) {
                     // etiqueta solo en el centro o al pasar el ratón (evita amontonar)
                     if (n.center || n.id === hover) {
                       const fs = 12 / scale;
-                      ctx.font = `${n.center ? 700 : 500} ${fs}px Inter, system-ui, sans-serif`;
+                      ctx.font = `${n.center ? 700 : 400} ${fs}px 'Martian Mono', monospace`;
                       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
                       const w = ctx.measureText(n.name).width;
                       const pad = 4 / scale;
