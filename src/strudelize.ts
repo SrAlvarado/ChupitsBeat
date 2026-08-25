@@ -18,6 +18,7 @@ import {
   rnd,
   snd,
   voice,
+  type DjAuthor,
   type Genre,
   type Song,
   type Style,
@@ -316,6 +317,12 @@ function schranzDrone(song: Song, o: Opts): string {
 
 /* ══ ensamblado ════════════════════════════════════════════════════════ */
 
+const AUTHOR_NOTE: Record<DjAuthor | 'local', string> = {
+  claude: '// escrito por Claude en los platos',
+  grok: '// escrito por Grok en los platos',
+  local: '// escrito por el compositor de la emisora',
+}
+
 const GENRE_NOTE: Record<Genre, string> = {
   lofi: '// piano eléctrico, swing y cinta gastada',
   house: '// bombo a negras, contratiempo y stabs de sótano',
@@ -327,10 +334,10 @@ export function strudelize(song: Song, vibe: Vibe, p: MoodProfile): string {
   const o = opts(vibe, p)
   const moods = vibe.moods.length ? vibe.moods.join(' + ') : 'sin ambiente'
   const header = [
-    `// ✳ K-LOFI — «${song.title}»`,
+    `// ✳ ChupitBeats — «${song.title}»`,
     `// ${song.genre.toUpperCase()} · ${moods} · ${vibe.tempo} bpm · ${keyLabel(song)} · ${song.bars} compases`,
     GENRE_NOTE[song.genre],
-    song.byClaude ? '// escrito por Claude en los platos' : '// escrito por el compositor de la emisora',
+    AUTHOR_NOTE[song.by ?? 'local'],
     '// (la lluvia y el ruido de calle van por fuera de Strudel, en WebAudio)',
     '',
     `setcpm(${vibe.tempo}/4)`,

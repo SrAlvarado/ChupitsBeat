@@ -48,10 +48,10 @@ radio.onStatus = (msg) => {
   djLine.textContent = msg
 }
 radio.onTrack = (info: TrackInfo) => {
-  const claude = info.byClaude ? ' · <span class="claude-tag">✳ claude a los platos</span>' : ''
+  const dj = info.by ? ` · <span class="claude-tag">✳ ${info.by} a los platos</span>` : ''
   const style = info.genre === 'lofi' ? ` · ${info.style}` : ''
   nowPlaying.innerHTML =
-    `suena: <span class="track"></span> · ${info.genre} · ${info.tempo} bpm${style}${claude}`
+    `suena: <span class="track"></span> · ${info.genre} · ${info.tempo} bpm${style}${dj}`
   nowPlaying.querySelector('.track')!.textContent = `「${info.title}」`
   djLine.textContent = info.djLine ?? ''
   popFlash()
@@ -159,7 +159,7 @@ codeArea.addEventListener('keydown', (e) => {
 })
 
 /* ── plegar la consola sobre la escena ───────────────────────────────── */
-const COLLAPSE_KEY = 'k-lofi-console-collapsed'
+const COLLAPSE_KEY = 'chupitbeats-console-collapsed'
 const setCollapsed = (collapsed: boolean) => {
   shell.classList.toggle('collapsed', collapsed)
   consoleEl.classList.toggle('collapsed', collapsed)
@@ -185,7 +185,7 @@ try {
 djBtn.addEventListener('click', () => {
   void (async () => {
     djBtn.disabled = true
-    djLine.textContent = 'claude está escribiendo el patrón…'
+    djLine.textContent = 'la IA está escribiendo el patrón…'
     const ctrl = new AbortController()
     const timeout = setTimeout(() => ctrl.abort(), 30000)
     try {
