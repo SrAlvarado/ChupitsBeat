@@ -10,7 +10,9 @@
  *   ANTHROPIC_API_KEY → Claude
  *   XAI_API_KEY       → Grok
  *   GEMINI_API_KEY    → Gemini
- * Si hay varias, manda DJ_PROVIDER; si no, se elige en ese orden.
+ * Si hay varias, manda DJ_PROVIDER; si no, se prueban en ese orden y se pasa a
+ * la siguiente cuando una falla por saldo, cuota o clave: así una variable
+ * olvidada en el entorno no deja la radio sin DJ.
  *
  * xAI y Gemini exponen endpoint compatible con OpenAI, así que comparten
  * camino: sólo cambian la URL, la clave y el modelo.
@@ -124,16 +126,17 @@ Ambiente de calle: ${vibe.rain}%
 
 Escribe el próximo tema para la emisora ${vibe.genre}.`
 
-/** Qué proveedor toca, según las claves que haya puestas. */
-function pickProvider(): Provider | null {
+/** Proveedores con clave, en el orden en que se van a intentar. */
+function pickProviders(): Provider[] {
   const has: Record<Provider, boolean> = {
     claude: !!process.env.ANTHROPIC_API_KEY,
     grok: !!process.env.XAI_API_KEY,
     gemini: !!(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
   }
+  const order = (['claude', 'grok', 'gemini'] as Provider[]).filter((p) => has[p])
   const forced = process.env.DJ_PROVIDER as Provider | undefined
-  if (forced && has[forced]) return forced
-  return (['claude', 'grok', 'gemini'] as Provider[]).find((p) => has[p]) ?? null
+  if (forced && has[forced]) return [forced, ...order.filter((p) => p !== forced)]
+  return order
 }
 
 async function composeWithClaude(vibe: Vibe): Promise<Brief> {
@@ -253,8 +256,8 @@ async function composeWithOpenAI(cfg: OpenAICompatible, vibe: Vibe): Promise<Bri
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const provider = pickProvider()
-  if (!provider) {
+  const providers = pickProviders()
+  if (providers.length === 0) {
     return json(
       { error: 'el DJ no tiene clave: añade GEMINI_API_KEY, XAI_API_KEY o ANTHROPIC_API_KEY en Vercel' },
       500,
@@ -270,24 +273,34 @@ export async function POST(req: Request): Promise<Response> {
     return json({ error: 'cuerpo inválido' }, 400)
   }
 
-  try {
-    const brief =
-      provider === 'claude'
-        ? await composeWithClaude(vibe)
-        : await composeWithOpenAI(openAiConfig(provider), vibe)
-    return json({ ...brief, by: provider }, 200)
-  } catch (err) {
-    if (err instanceof Anthropic.RateLimitError) {
-      return json({ error: 'demasiadas peticiones — prueba en un minuto' }, 429)
+  const failures: string[] = []
+  for (const provider of providers) {
+    try {
+      const brief =
+        provider === 'claude'
+          ? await composeWithClaude(vibe)
+          : await composeWithOpenAI(openAiConfig(provider), vibe)
+      return json({ ...brief, by: provider }, 200)
+    } catch (err) {
+      failures.push(describe(err))
     }
-    if (err instanceof Anthropic.AuthenticationError) {
-      return json({ error: 'Anthropic no acepta la clave — revisa ANTHROPIC_API_KEY en Vercel' }, 502)
-    }
-    if (err instanceof Anthropic.APIError) {
-      return json({ error: `Anthropic respondió ${err.status}` }, 502)
-    }
-    return json({ error: err instanceof Error ? err.message : 'fallo desconocido' }, 502)
   }
+  // todas han fallado: se cuenta la primera, que es la del proveedor preferido
+  return json({ error: failures[0] ?? 'fallo desconocido', tried: providers }, 502)
+}
+
+/** Un error de proveedor, ya masticado para enseñarlo en pantalla. */
+function describe(err: unknown): string {
+  if (err instanceof Anthropic.RateLimitError) {
+    return 'Anthropic te está limitando el ritmo — prueba en un minuto'
+  }
+  if (err instanceof Anthropic.AuthenticationError) {
+    return 'Anthropic no acepta la clave — revisa ANTHROPIC_API_KEY en Vercel'
+  }
+  if (err instanceof Anthropic.APIError) {
+    return `Anthropic respondió ${err.status}`
+  }
+  return err instanceof Error ? err.message : 'fallo desconocido'
 }
 
 function json(body: unknown, status: number) {
