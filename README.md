@@ -1,9 +1,9 @@
-# ChupitsBeats · radio generativa
+# ChupitBeats · radio generativa
 
 Radio generativa con **Strudel** como motor de patrones, partiendo de una
 recreación de [k-lofi.vercel.app](https://k-lofi.vercel.app).
 
-> El ChupitsBeats anterior (descubrimiento por similitud acústica, generador de
+> El ChupitBeats anterior (descubrimiento por similitud acústica, generador de
 > pósters, remix engine schranz y el backend de `server/`) vive ahora en
 > [`SrAlvarado/chupits-discovery`](https://github.com/SrAlvarado/chupits-discovery),
 > con todo su historial.
@@ -41,7 +41,7 @@ ver, editar y volver a evaluar desde el panel "Código".
 | `src/composer.ts` → `GENRES` | Rango de tempo, cajas de ritmos y duración de cada emisora |
 | `src/scene.ts` | Los tres escenarios: render a 320×180, temblor de vértices, cuantización de color y ojo de pez |
 | `src/viz.ts` | Barras de espectro |
-| `api/dj.ts` | Claude escribe el próximo tema directamente en Strudel |
+| `api/dj.ts` | La IA (Claude o Grok) escribe el próximo tema directamente en Strudel |
 
 ## Uso
 
@@ -88,15 +88,44 @@ El proyecto está en la raíz del repo, así que Vercel lo detecta solo:
 | Framework Preset | Vite (autodetectado) |
 | Build Command | `npm run build` (autodetectado) |
 | Output Directory | `dist` (autodetectado) |
-| Environment Variable | `ANTHROPIC_API_KEY` — sólo para el botón del DJ |
+| Environment Variable | `ANTHROPIC_API_KEY` **o** `XAI_API_KEY` — sólo para el botón del DJ |
 
 `api/dj.ts` usa el formato Web estándar de Vercel (`export async function POST`),
 que el runtime de Node reconoce sin configuración. Un `export default function`
 a secas se interpretaría como handler de Node `(req, res)` y `req.json()`
 reventaría — de ahí el export por método.
 
-Sin `ANTHROPIC_API_KEY` la emisora funciona igual: el compositor local escribe
-los temas y el botón del DJ devuelve un aviso en vez de romper.
+### El DJ: Claude o Grok
+
+`api/dj.ts` elige proveedor según la clave que encuentre en el entorno:
+
+| Variable | Proveedor | Modelo |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude | `claude-opus-5` |
+| `XAI_API_KEY` | Grok | `grok-4.6`, o el que pongas en `XAI_MODEL` |
+
+Si están las dos, manda `DJ_PROVIDER` (`claude` o `grok`); por defecto, Claude.
+xAI es compatible con OpenAI, así que la llamada va con `fetch` a
+`https://api.x.ai/v1/chat/completions` y `response_format: json_schema` — sin
+dependencia extra.
+
+Sin ninguna clave la emisora funciona igual: el compositor local escribe los
+temas y el botón del DJ devuelve un aviso en vez de romper.
+
+## Desplegar paso a paso
+
+1. Fusiona el PR para que `main` tenga el proyecto en la raíz.
+2. En [vercel.com/new](https://vercel.com/new), importa `SrAlvarado/ChupitsBeat`.
+3. No toques nada de la configuración: Vite se detecta solo.
+4. Antes de darle a **Deploy**, despliega *Environment Variables* y añade una:
+   `XAI_API_KEY` (o `ANTHROPIC_API_KEY`) con tu clave. Deja marcados los tres
+   entornos.
+5. **Deploy**. Tarda un par de minutos.
+6. Abre la URL, dale a **Play** y luego a **Componer con IA** para comprobar que
+   el endpoint responde.
+
+Si añades la clave *después* del primer despliegue, hay que redesplegar: las
+variables se inyectan en el build. En Vercel, *Deployments → … → Redeploy*.
 
 ## Licencia
 

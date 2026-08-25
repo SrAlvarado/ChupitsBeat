@@ -17,6 +17,9 @@ export type Mood =
 
 export type Style = 'clásico' | 'balada' | 'comping' | 'arpegio'
 
+/** Quién ha firmado el tema, cuando no lo ha hecho el compositor local. */
+export type DjAuthor = 'claude' | 'grok'
+
 /** Las tres emisoras del dial. */
 export type Genre = 'lofi' | 'house' | 'schranz'
 
@@ -114,7 +117,7 @@ export interface Song {
   hatDensity: number
   bars: number
   bank: string
-  byClaude?: boolean
+  by?: DjAuthor
   djLine?: string
 }
 

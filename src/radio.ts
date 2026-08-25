@@ -22,6 +22,7 @@ import {
   makeTitle,
   clamp,
   GENRES,
+  type DjAuthor,
   type Genre,
   type Song,
   type Vibe,
@@ -40,7 +41,7 @@ export interface TrackInfo {
   style: Style
   bars: number
   tempo: number
-  byClaude: boolean
+  by: DjAuthor | null
   djLine?: string
 }
 
@@ -49,6 +50,7 @@ export interface DjBrief {
   title?: string
   line?: string
   code?: string
+  by?: DjAuthor
   style?: Style
   minor?: boolean
   bars?: number
@@ -141,7 +143,7 @@ export class Radio {
       if (brief.bank) song.bank = brief.bank
       song.title = brief.title ?? makeTitle(this.vibe.genre)
       song.djLine = brief.line
-      song.byClaude = true
+      song.by = brief.by ?? 'claude'
     }
     this.song = song
     const code = brief?.code?.trim() ? brief.code : strudelize(song, this.vibe, profile)
@@ -168,7 +170,7 @@ export class Radio {
       style: this.song.style,
       bars: this.song.bars,
       tempo: this.vibe.tempo,
-      byClaude: this.song.byClaude === true,
+      by: this.song.by ?? null,
       djLine: this.song.djLine,
     })
     this.scheduleNext()

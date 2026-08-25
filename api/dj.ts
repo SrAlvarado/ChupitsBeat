@@ -1,12 +1,19 @@
 /**
- * POST /api/dj — Claude a los platos.
+ * POST /api/dj — la IA a los platos.
  *
- * Recibe el estado de la consola (ambientes + diales) y devuelve el próximo
- * tema *escrito en Strudel*. Función serverless de Vercel (runtime Node).
+ * Recibe el estado de la consola (emisora + ambientes + diales) y devuelve el
+ * próximo tema *escrito en Strudel*. Función serverless de Vercel (runtime
+ * Node), en formato Web estándar: un `export default function(req)` a secas se
+ * interpretaría como handler de Node `(req, res)` y `req.json()` reventaría.
  *
- * Necesita ANTHROPIC_API_KEY en el entorno del proyecto.
+ * Funciona con dos proveedores, según la clave que haya en el entorno:
+ *   ANTHROPIC_API_KEY → Claude
+ *   XAI_API_KEY       → Grok
+ * Si están las dos, manda DJ_PROVIDER ("claude" | "grok"), y por defecto Claude.
  */
 import Anthropic from '@anthropic-ai/sdk'
+
+type Provider = 'claude' | 'grok'
 
 interface Vibe {
   genre: 'lofi' | 'house' | 'schranz'
@@ -16,7 +23,14 @@ interface Vibe {
   rain: number
 }
 
-const SYSTEM = `Eres el DJ residente de K-LOFI, una emisora lofi generativa cuyo
+interface Brief {
+  title: string
+  line: string
+  code: string
+  bars: number
+}
+
+const SYSTEM = `Eres el DJ residente de ChupitBeats, una radio generativa cuyo
 motor es Strudel (live coding de patrones sobre Web Audio).
 
 Escribes el próximo tema como un programa de Strudel completo. Reglas del motor:
@@ -30,6 +44,8 @@ Escribes el próximo tema como un programa de Strudel completo. Reglas del motor
   .vib .vibmod .coarse .crush .gain .pan .attack .decay .sustain .release .legato
   .degradeBy .sometimesBy .swingBy .late .arp .struct .fast .slow .add
 - Termina CADA capa con .analyze(1) para que el visualizador reciba señal.
+- .arp() toma un patrón de ÍNDICES numéricos, p. ej. .arp("0 1 2 3 2 1"), NO
+  nombres de modo como "up".
 - Las notas van en nombres tipo "c4 eb4 g4"; los acordes como "[c4,eb4,g4]";
   la alternancia por compás como "<[..] [..] [..] [..]>".
 - Nada de samples de melodía, nada de import, nada de código fuera de Strudel.
@@ -52,9 +68,9 @@ Hay tres emisoras y escribes en la que te digan:
   .lpf modulado por perlin y .lpq muy alto, drone grave por debajo. Sin acordes
   bonitos: esto es chapa. Caja: RolandTR909.
 
-Ajusta el carácter a las etiquetas de ambiente y a los diales: "suciedad" alta
+Ajusta el carácter a las etiquetas de ambiente y a los diales: "textura" alta
 significa filtro más cerrado, .coarse/.crush/.shape mayores y más .vibmod; el
-dial de "calle" sólo afecta a la ambientación (no la escribas tú).`
+dial de "ambiente" sólo afecta a la ambientación (no la escribas tú).`
 
 const SCHEMA = {
   type: 'object',
@@ -68,14 +84,78 @@ const SCHEMA = {
   },
 } as const
 
-/**
- * Vercel espera uno de los formatos Web estándar en /api: o `export default
- * { fetch }`, o un export por método. Un `export default function(req)` a secas
- * lo trataría como handler de Node (req, res) y `req.json()` reventaría.
- */
+const userPrompt = (vibe: Vibe) => `Emisora: ${vibe.genre}
+Ambiente: ${vibe.moods.join(', ') || 'ninguno'}
+Tempo: ${vibe.tempo} bpm
+Textura: ${vibe.tapeWear}%
+Ambiente de calle: ${vibe.rain}%
+
+Escribe el próximo tema para la emisora ${vibe.genre}.`
+
+/** Qué proveedor toca, según las claves que haya puestas. */
+function pickProvider(): Provider | null {
+  const forced = process.env.DJ_PROVIDER as Provider | undefined
+  if (forced === 'grok' && process.env.XAI_API_KEY) return 'grok'
+  if (forced === 'claude' && process.env.ANTHROPIC_API_KEY) return 'claude'
+  if (process.env.ANTHROPIC_API_KEY) return 'claude'
+  if (process.env.XAI_API_KEY) return 'grok'
+  return null
+}
+
+async function composeWithClaude(vibe: Vibe): Promise<Brief> {
+  const client = new Anthropic()
+  const response = await client.messages.create({
+    model: 'claude-opus-5',
+    max_tokens: 16000,
+    system: SYSTEM,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
+    messages: [{ role: 'user', content: userPrompt(vibe) }],
+  })
+  if (response.stop_reason === 'refusal') {
+    throw new Error('el DJ ha preferido no pinchar esta')
+  }
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+  return JSON.parse(text) as Brief
+}
+
+/** xAI es compatible con OpenAI, así que basta con fetch: sin dependencia extra. */
+async function composeWithGrok(vibe: Vibe): Promise<Brief> {
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: process.env.XAI_MODEL ?? 'grok-4.6',
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: userPrompt(vibe) },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'tema', schema: SCHEMA, strict: true },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`xAI respondió ${res.status}${detail ? ` — ${detail.slice(0, 180)}` : ''}`)
+  }
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error('xAI devolvió una respuesta vacía')
+  return JSON.parse(content) as Brief
+}
+
 export async function POST(req: Request): Promise<Response> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return json({ error: 'falta ANTHROPIC_API_KEY en el entorno' }, 500)
+  const provider = pickProvider()
+  if (!provider) {
+    return json({ error: 'falta ANTHROPIC_API_KEY o XAI_API_KEY en el entorno' }, 500)
   }
 
   let vibe: Vibe
@@ -87,43 +167,9 @@ export async function POST(req: Request): Promise<Response> {
     return json({ error: 'cuerpo inválido' }, 400)
   }
 
-  const client = new Anthropic()
-
   try {
-    const response = await client.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 16000,
-      system: SYSTEM,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'medium',
-        format: { type: 'json_schema', schema: SCHEMA },
-      },
-      messages: [
-        {
-          role: 'user',
-          content: `Emisora: ${vibe.genre}
-Ambiente: ${vibe.moods.join(', ') || 'ninguno'}
-Tempo: ${vibe.tempo} bpm
-Suciedad: ${vibe.tapeWear}%
-Calle: ${vibe.rain}%
-
-Escribe el próximo tema para la emisora ${vibe.genre}.`,
-        },
-      ],
-    })
-
-    if (response.stop_reason === 'refusal') {
-      return json({ error: 'el DJ ha preferido no pinchar esta' }, 502)
-    }
-
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-
-    const brief = JSON.parse(text) as { title: string; line: string; code: string; bars: number }
-    return json(brief, 200)
+    const brief = provider === 'grok' ? await composeWithGrok(vibe) : await composeWithClaude(vibe)
+    return json({ ...brief, by: provider }, 200)
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
       return json({ error: 'demasiadas peticiones — prueba en un minuto' }, 429)
@@ -131,7 +177,7 @@ Escribe el próximo tema para la emisora ${vibe.genre}.`,
     if (err instanceof Anthropic.APIError) {
       return json({ error: `la API respondió ${err.status}` }, 502)
     }
-    return json({ error: err instanceof Error ? err.message : 'fallo desconocido' }, 500)
+    return json({ error: err instanceof Error ? err.message : 'fallo desconocido' }, 502)
   }
 }
 
