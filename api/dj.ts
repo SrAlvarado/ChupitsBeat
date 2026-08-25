@@ -201,7 +201,7 @@ function explainProvider(cfg: OpenAICompatible, status: number, body: string): s
     return `${cfg.label} te está limitando el ritmo — prueba en un minuto`
   }
   if (status >= 500) {
-    return `${cfg.label} está teniendo problemas — prueba en un rato`
+    return `${cfg.label} está teniendo problemas (${status})${detail ? `: ${detail.slice(0, 160)}` : ''}`
   }
   return `${cfg.label} respondió ${status}${detail ? `: ${detail.slice(0, 120)}` : ''}`
 }
@@ -228,31 +228,53 @@ async function composeWithOpenAI(cfg: OpenAICompatible, vibe: Vibe): Promise<Bri
   const { additionalProperties, ...loose } = SCHEMA
   const schema = cfg.strict ? SCHEMA : loose
 
-  const res = await fetch(cfg.url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: userPrompt(vibe) },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: cfg.strict
-          ? { name: 'tema', schema, strict: true }
-          : { name: 'tema', schema },
-      },
-    }),
-  })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(explainProvider(cfg, res.status, body))
+  const strictFormat = {
+    type: 'json_schema',
+    json_schema: cfg.strict ? { name: 'tema', schema, strict: true } : { name: 'tema', schema },
   }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error(`${cfg.label} devolvió una respuesta vacía`)
-  return parseBrief(content)
+
+  // Primero con el esquema; si el proveedor lo rechaza, se repite pidiendo JSON
+  // a secas y describiendo la forma en el prompt. Algunos modelos tropiezan con
+  // la capa de structured outputs pero devuelven el objeto sin problema.
+  const attempts: Array<{ format: unknown; hint: string }> = [
+    { format: strictFormat, hint: '' },
+    {
+      format: { type: 'json_object' },
+      hint: '\n\nResponde ÚNICAMENTE con un objeto JSON con estas claves: ' +
+        'title (string), line (string), code (string con el programa de Strudel) ' +
+        'y bars (entero entre 16 y 48). Sin texto alrededor.',
+    },
+  ]
+
+  let last = ''
+  for (const attempt of attempts) {
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: SYSTEM },
+          { role: 'user', content: userPrompt(vibe) + attempt.hint },
+        ],
+        response_format: attempt.format,
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[dj] ${cfg.label} ${res.status}: ${body.slice(0, 500)}`)
+      last = explainProvider(cfg, res.status, body)
+      continue
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+    const content = data.choices?.[0]?.message?.content
+    if (!content) {
+      last = `${cfg.label} devolvió una respuesta vacía`
+      continue
+    }
+    return parseBrief(content)
+  }
+  throw new Error(last || `${cfg.label} no ha devuelto nada aprovechable`)
 }
 
 export async function POST(req: Request): Promise<Response> {
