@@ -122,6 +122,42 @@ async function composeWithClaude(vibe: Vibe): Promise<Brief> {
   return JSON.parse(text) as Brief
 }
 
+/**
+ * Traduce el error de xAI a algo que un humano pueda accionar. El cuerpo llega
+ * como {"code": "...", "error": "..."} y sin esto acaba volcado en pantalla.
+ */
+function explainXai(status: number, body: string): string {
+  let code = ''
+  let detail = ''
+  try {
+    const parsed = JSON.parse(body) as { code?: string; error?: string | { message?: string } }
+    code = parsed.code ?? ''
+    detail = typeof parsed.error === 'string' ? parsed.error : (parsed.error?.message ?? '')
+  } catch {
+    detail = body
+  }
+
+  if (/credits or licenses/i.test(detail)) {
+    return 'tu equipo de xAI no tiene saldo — añade crédito en console.x.ai y vuelve a darle'
+  }
+  if (status === 401 || code === 'unauthenticated') {
+    return 'xAI no acepta la clave — revisa XAI_API_KEY en Vercel'
+  }
+  if (status === 403) {
+    return `xAI deniega el permiso${detail ? `: ${detail.slice(0, 120)}` : ''}`
+  }
+  if (status === 404) {
+    return `xAI no conoce el modelo "${process.env.XAI_MODEL ?? 'grok-4.6'}" — cámbialo con XAI_MODEL`
+  }
+  if (status === 429) {
+    return 'xAI te está limitando el ritmo — prueba en un minuto'
+  }
+  if (status >= 500) {
+    return 'xAI está teniendo problemas — prueba en un rato'
+  }
+  return `xAI respondió ${status}${detail ? `: ${detail.slice(0, 120)}` : ''}`
+}
+
 /** xAI es compatible con OpenAI, así que basta con fetch: sin dependencia extra. */
 async function composeWithGrok(vibe: Vibe): Promise<Brief> {
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
@@ -143,8 +179,8 @@ async function composeWithGrok(vibe: Vibe): Promise<Brief> {
     }),
   })
   if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(`xAI respondió ${res.status}${detail ? ` — ${detail.slice(0, 180)}` : ''}`)
+    const body = await res.text().catch(() => '')
+    throw new Error(explainXai(res.status, body))
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
   const content = data.choices?.[0]?.message?.content
@@ -155,7 +191,10 @@ async function composeWithGrok(vibe: Vibe): Promise<Brief> {
 export async function POST(req: Request): Promise<Response> {
   const provider = pickProvider()
   if (!provider) {
-    return json({ error: 'falta ANTHROPIC_API_KEY o XAI_API_KEY en el entorno' }, 500)
+    return json(
+      { error: 'el DJ no tiene clave: añade XAI_API_KEY o ANTHROPIC_API_KEY en Vercel' },
+      500,
+    )
   }
 
   let vibe: Vibe
@@ -174,8 +213,11 @@ export async function POST(req: Request): Promise<Response> {
     if (err instanceof Anthropic.RateLimitError) {
       return json({ error: 'demasiadas peticiones — prueba en un minuto' }, 429)
     }
+    if (err instanceof Anthropic.AuthenticationError) {
+      return json({ error: 'Anthropic no acepta la clave — revisa ANTHROPIC_API_KEY en Vercel' }, 502)
+    }
     if (err instanceof Anthropic.APIError) {
-      return json({ error: `la API respondió ${err.status}` }, 502)
+      return json({ error: `Anthropic respondió ${err.status}` }, 502)
     }
     return json({ error: err instanceof Error ? err.message : 'fallo desconocido' }, 502)
   }
