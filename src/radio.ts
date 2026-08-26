@@ -154,10 +154,18 @@ export class Radio {
     }
   }
 
+  /**
+   * El chip "lluvia" decide si llueve; el dial de calle, con cuánta fuerza.
+   * Sin el chip no hay lluvia por mucho que subas el dial.
+   */
+  get rainAmount(): number {
+    return this.vibe.moods.includes('lluvia') ? this.vibe.rain : 0
+  }
+
   /** La calle suena menos según bajamos al sótano y a la nave. */
   private pushAmbience() {
     const level = GENRES[this.vibe.genre].streetLevel
-    this.ambience?.set(this.vibe.rain * level, this.vibe.tapeWear)
+    this.ambience?.set(this.rainAmount * level, this.vibe.tapeWear)
   }
 
   /** Compone y pincha un tema nuevo. `brief` deja que el DJ mande. */

@@ -260,6 +260,6 @@ mountViz($<HTMLCanvasElement>('viz'), () => radio.spectrum())
 
 const pump = () => {
   requestAnimationFrame(pump)
-  scene.update(energyOf(radio.spectrum()), vibe.rain, radio.playing, vibe.genre)
+  scene.update(energyOf(radio.spectrum()), radio.rainAmount, vibe.rain, radio.playing, vibe.genre)
 }
 pump()

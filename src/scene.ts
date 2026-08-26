@@ -154,7 +154,7 @@ interface Kit {
   camera: THREE.PerspectiveCamera
   /** cuánto ojo de pez le pega a este escenario */
   fisheye: number
-  tick(t: number, energy: number, rain: number, playing: boolean): void
+  tick(t: number, energy: number, rain: number, outdoors: number, playing: boolean): void
 }
 
 /* ══ 1 · la habitación (lofi) ══════════════════════════════════════════ */
@@ -305,7 +305,7 @@ function buildRoom(): Kit {
     scene,
     camera,
     fisheye: 0.08,
-    tick(t, energy, rainPct, playing) {
+    tick(t, energy, rainPct, _outdoors, playing) {
       camera.position.set(
         CAM.x + Math.sin(t * 0.21) * 0.12,
         CAM.y + Math.sin(t * 0.31) * 0.06,
@@ -492,12 +492,12 @@ function buildBeach(): Kit {
     scene,
     camera,
     fisheye: 0.06,
-    tick(t, energy, rainPct, playing) {
+    tick(t, energy, _rainPct, outdoors, playing) {
       camera.position.set(CAM.x + Math.sin(t * 0.19) * 0.5, CAM.y + Math.sin(t * 0.33) * 0.12, CAM.z)
       camera.lookAt(LOOK.x + Math.sin(t * 0.14) * 1.2, LOOK.y, LOOK.z)
 
       // el dial de ambiente sube la marejada; la música la empuja
-      const swell = 0.25 + (rainPct / 100) * 0.9 + energy * 0.8
+      const swell = 0.25 + (outdoors / 100) * 0.9 + energy * 0.8
       for (let i = 0; i <= SEA_W; i++) {
         for (let j = 0; j <= SEA_H; j++) {
           const k = j * (SEA_W + 1) + i
@@ -862,7 +862,7 @@ function buildAlley(): Kit {
     scene,
     camera,
     fisheye: 0.13,
-    tick(t, energy, rainPct, playing) {
+    tick(t, energy, rainPct, _outdoors, playing) {
       // en la nave la cámara tiembla con el bombo
       const kick = energy * 0.16 * (playing ? 1 : 0.2)
       camera.position.set(
@@ -900,7 +900,11 @@ function buildAlley(): Kit {
 /* ══ montaje ═══════════════════════════════════════════════════════════ */
 
 export interface SceneHandle {
-  update(energy: number, rain: number, playing: boolean, genre: Genre): void
+  /**
+   * @param rain      cuánta lluvia cae (0 si el ambiente no la pide)
+   * @param outdoors  el dial de calle, que mueve el mar aunque no llueva
+   */
+  update(energy: number, rain: number, outdoors: number, playing: boolean, genre: Genre): void
   dispose(): void
 }
 
@@ -971,6 +975,7 @@ export function mountScene(container: HTMLElement): SceneHandle {
   let smoothEnergy = 0
   const clock = new THREE.Clock()
   let rainAmount = 30
+  let outdoorsAmount = 30
   let energyIn = 0
   let isPlaying = false
   let genre: Genre = 'lofi'
@@ -991,7 +996,7 @@ export function mountScene(container: HTMLElement): SceneHandle {
     smoothEnergy += (energyIn - smoothEnergy) * (genre === 'schranz' ? 0.3 : 0.12)
 
     const kit = kitFor(genre)
-    kit.tick(t, smoothEnergy, rainAmount, isPlaying)
+    kit.tick(t, smoothEnergy, rainAmount, outdoorsAmount, isPlaying)
 
     screenMat.uniforms.uTime.value = t
     screenMat.uniforms.uFisheye.value = kit.fisheye + smoothEnergy * (genre === 'schranz' ? 0.16 : 0.05)
@@ -1005,9 +1010,10 @@ export function mountScene(container: HTMLElement): SceneHandle {
   render()
 
   return {
-    update(energy, rainPct, playing, g) {
+    update(energy, rainPct, outdoors, playing, g) {
       energyIn = energy
       rainAmount = rainPct
+      outdoorsAmount = outdoors
       isPlaying = playing
       genre = g
     },
