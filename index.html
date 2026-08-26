@@ -64,6 +64,11 @@
             <fieldset>
               <legend>Diales</legend>
               <div class="slider-row">
+                <label for="dial-volume">volumen</label>
+                <input type="range" id="dial-volume" min="0" max="100" value="85" step="1" />
+                <output id="out-volume" for="dial-volume">85%</output>
+              </div>
+              <div class="slider-row">
                 <label for="dial-tempo">tempo</label>
                 <input type="range" id="dial-tempo" min="60" max="92" value="74" step="1" />
                 <output id="out-tempo" for="dial-tempo">74 bpm</output>
@@ -74,7 +79,7 @@
                 <output id="out-tape" for="dial-tape">45%</output>
               </div>
               <div class="slider-row">
-                <label for="dial-rain">ambiente</label>
+                <label for="dial-rain">calle</label>
                 <input type="range" id="dial-rain" min="0" max="100" value="30" step="5" />
                 <output id="out-rain" for="dial-rain">30%</output>
               </div>

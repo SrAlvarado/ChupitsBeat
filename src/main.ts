@@ -31,6 +31,9 @@ const chips = [...document.querySelectorAll<HTMLButtonElement>('.chip')]
 const readMoods = (): Mood[] =>
   chips.filter((c) => c.getAttribute('aria-pressed') === 'true').map((c) => c.dataset.mood as Mood)
 
+const volumeInput = $<HTMLInputElement>('dial-volume')
+const volumeOut = $('out-volume')
+
 const dials = [
   { input: $<HTMLInputElement>('dial-tempo'), out: $('out-tempo'), key: 'tempo', fmt: (v: number) => `${v} bpm` },
   { input: $<HTMLInputElement>('dial-tape'), out: $('out-tape'), key: 'tapeWear', fmt: (v: number) => `${v}%` },
@@ -118,14 +121,36 @@ for (const btn of genreBtns) {
   btn.addEventListener('click', () => applyGenre(btn.dataset.genre as Genre, true))
 }
 
+/**
+ * El ambiente entra en la composición, no en el tema que ya suena: cambiarlo
+ * pide un tema nuevo. Se espera un poco para poder tocar varios chips seguidos
+ * sin cortar la música en cada clic.
+ */
+let moodTimer = 0
+const refreshOnMoodChange = () => {
+  clearTimeout(moodTimer)
+  if (!radio.playing) return
+  djLine.textContent = 'ambiente nuevo — el próximo tema lo recoge'
+  moodTimer = window.setTimeout(() => {
+    if (radio.playing) void radio.compose()
+  }, 900)
+}
+
 for (const chip of chips) {
   chip.addEventListener('click', () => {
     const on = chip.getAttribute('aria-pressed') === 'true'
     chip.setAttribute('aria-pressed', String(!on))
     vibe.moods = readMoods()
     radio.setVibe(vibe)
+    refreshOnMoodChange()
   })
 }
+
+volumeInput.addEventListener('input', () => {
+  const v = Number(volumeInput.value)
+  volumeOut.textContent = `${v}%`
+  radio.setVolume(v)
+})
 
 for (const dial of dials) {
   dial.input.addEventListener('input', () => {
@@ -227,6 +252,7 @@ djBtn.addEventListener('click', () => {
 
 /* ── arranque ────────────────────────────────────────────────────────── */
 applyGenre('lofi', false)
+radio.setVolume(Number(volumeInput.value))
 
 /* ── escena y visualizador ───────────────────────────────────────────── */
 const scene = mountScene(stage)

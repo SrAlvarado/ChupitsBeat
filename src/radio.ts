@@ -12,6 +12,7 @@ import {
   hush,
   getAudioContext,
   getAnalyzerData,
+  getSuperdoughAudioController,
   aliasBank,
   samples,
 } from '@strudel/web'
@@ -70,6 +71,7 @@ export class Radio {
   private code = ''
   private timer: number | null = null
   private analyserBuf: Float32Array | null = null
+  private volume = 0.85
   playing = false
 
   get currentCode() {
@@ -98,6 +100,7 @@ export class Radio {
       this.ambience = new Ambience(getAudioContext())
       this.ambience.start()
       this.pushAmbience()
+      this.applyVolume()
     })()
     return this.ready
   }
@@ -122,6 +125,33 @@ export class Radio {
   setVibe(vibe: Vibe) {
     this.vibe = { ...vibe, moods: [...vibe.moods] }
     this.pushAmbience()
+  }
+
+  /**
+   * Volumen general, de 0 a 100. Superdough ya tiene un nodo de ganancia entre
+   * sus órbitas y los altavoces, así que basta con moverlo; la ambientación,
+   * que va por fuera de Strudel, lleva el suyo propio.
+   */
+  setVolume(percent: number) {
+    this.volume = clamp(percent / 100, 0, 1)
+    this.applyVolume()
+  }
+
+  private applyVolume() {
+    this.ambience?.setVolume(this.volume)
+    const master = this.strudelMaster()
+    if (master) {
+      master.gain.setTargetAtTime(Math.max(0.0001, this.volume), master.context.currentTime, 0.08)
+    }
+  }
+
+  /** La ganancia de salida de superdough, si ya existe la cadena de audio. */
+  private strudelMaster(): GainNode | null {
+    try {
+      return getSuperdoughAudioController().output?.destinationGain ?? null
+    } catch {
+      return null
+    }
   }
 
   /** La calle suena menos según bajamos al sótano y a la nave. */
