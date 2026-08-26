@@ -12,6 +12,8 @@ export class Ambience {
   private rainGain: GainNode
   private crackleGain: GainNode
   private started = false
+  private volume = 1
+  private muted = false
 
   constructor(ctx: AudioContext) {
     this.ctx = ctx
@@ -87,7 +89,19 @@ export class Ambience {
 
   /** Silencia la ambientación sin destruir los bucles. */
   mute(muted: boolean) {
-    this.out.gain.setTargetAtTime(muted ? 0.0001 : 1, this.ctx.currentTime, 0.15)
+    this.muted = muted
+    this.applyOutput()
+  }
+
+  /** Volumen general, de 0 a 1. */
+  setVolume(volume: number) {
+    this.volume = volume
+    this.applyOutput()
+  }
+
+  private applyOutput() {
+    const target = this.muted ? 0.0001 : Math.max(0.0001, this.volume)
+    this.out.gain.setTargetAtTime(target, this.ctx.currentTime, 0.12)
   }
 
   private noiseBuffer(seconds: number) {
