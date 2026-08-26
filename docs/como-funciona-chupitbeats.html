@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cómo funciona ChupitBeats · Radio generativa en Strudel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0e0e; --bg-soft: #141414; --bg-card: #181818; --bg-elevated: #1f1f1f;
+    --border: #2a2a2a; --border-soft: #222222;
+    --text: #ffffff; --text-soft: #b4b4b4; --text-dim: #6e6e6e;
+    --accent: #FEF401; --accent-2: #d4ca00; --accent-3: #4ade80;
+    --accent-5: #f87171;
+    --code-bg: #0b0b0b;
+    --font: 'DM Sans', sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.65; font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at top left, rgba(254, 244, 1, 0.08), transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(212, 202, 0, 0.06), transparent 50%);
+    pointer-events: none; z-index: 0;
+  }
+  .layout { position: relative; z-index: 1; min-height: 100vh; }
+  aside {
+    position: fixed; top: 0; right: 0; width: 320px; height: 100vh;
+    border-left: 1px solid var(--border-soft);
+    background: rgba(10, 10, 12, 0.7);
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    transition: transform 0.3s, opacity 0.2s;
+    z-index: 50;
+  }
+  body.sidebar-hidden aside { transform: translateX(100%); opacity: 0; pointer-events: none; }
+  .sidebar-inner { display: flex; flex-direction: column; height: 100%; padding: 96px 24px 28px; min-height: 0; }
+  .sidebar-head { margin-bottom: 24px; flex-shrink: 0; }
+  .brand { font-size: 13px; font-weight: 600; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
+  .sidebar-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .doc-tag { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .doc-tag-default { background: rgba(254, 244, 1, 0.1); color: #f4eeb0; }
+  .doc-tag-purple { background: rgba(255, 255, 255, 0.12); color: #d4d4d4; }
+  .sidebar-inner nav { flex: 1; overflow-y: auto; min-height: 0; }
+  nav ol { list-style: none; padding: 0; margin: 0; counter-reset: nav; }
+  nav li { counter-increment: nav; margin-bottom: 4px; }
+  nav a {
+    display: block; color: var(--text-soft); text-decoration: none;
+    padding: 8px 12px; border-radius: 8px; font-size: 13.5px; transition: all 0.15s;
+  }
+  nav a::before {
+    content: counter(nav, decimal-leading-zero);
+    color: var(--text-dim); font-size: 10.5px; margin-right: 10px;
+    font-weight: 600; letter-spacing: 1px;
+  }
+  nav a:hover { color: var(--text); background: var(--bg-elevated); }
+
+  #sidebar-toggle {
+    position: fixed; top: 24px; right: 24px; z-index: 100;
+    width: 40px; height: 40px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-card); color: var(--text-soft);
+    border: 1px solid var(--border); border-radius: 10px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  #sidebar-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  main {
+    max-width: 1340px; margin: 0 auto;
+    padding: 60px 80px 120px; padding-right: 400px;
+    min-width: 0; transition: padding-right 0.3s;
+  }
+  body.sidebar-hidden main { padding-right: 80px; }
+  @media (max-width: 900px) {
+    main { padding-right: 32px; padding-left: 32px; padding-top: 80px; }
+    aside { transform: translateX(100%); opacity: 0; pointer-events: none; }
+  }
+
+  h1 {
+    font-size: 50px; margin: 0 0 24px; letter-spacing: -0.03em; line-height: 1.07;
+    background: linear-gradient(135deg, #ffffff 0%, var(--accent) 68%, var(--accent-2) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  h2 { font-size: 28px; margin: 56px 0 22px; color: var(--text); position: relative; padding-left: 20px; }
+  h2::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-2)); border-radius: 2px;
+  }
+  .section-num { color: var(--accent); font-size: 14px; font-weight: 700; margin-right: 14px; letter-spacing: 1px; vertical-align: super; }
+  h3 { font-size: 18px; margin: 28px 0 10px; color: var(--text); }
+  h4 { font-size: 15px; margin: 22px 0 8px; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+  p { margin: 0 0 14px; color: var(--text-soft); }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--accent-2); font-style: italic; }
+  ul, ol { color: var(--text-soft); padding-left: 22px; }
+  ul li, ol li { margin-bottom: 6px; }
+  a { color: var(--accent); }
+  a:hover { color: var(--accent-2); }
+  code { font-family: var(--mono); font-size: 13px; background: var(--code-bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); border: 1px solid var(--border-soft); }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border-soft);
+    border-radius: 10px; padding: 16px 20px; overflow-x: auto;
+    font-family: var(--mono); font-size: 13px; color: var(--text-soft);
+    margin: 14px 0 20px; line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: inherit; font-size: 13px; }
+  blockquote {
+    margin: 18px 0; padding: 14px 22px; border-left: 3px solid var(--accent);
+    background: rgba(254, 244, 1, 0.04); color: var(--text-soft);
+    font-style: italic; border-radius: 0 8px 8px 0;
+  }
+
+  .hero { padding: 0 0 50px; border-bottom: 1px solid var(--border-soft); margin-bottom: 40px; }
+  .hero-sub { color: var(--text-soft); font-size: 18px; max-width: 780px; margin: 0; }
+  .formula {
+    display: inline-flex; align-items: center; gap: 14px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 22px; margin-top: 28px;
+    font-size: 17px; flex-wrap: wrap;
+  }
+  .formula-token { color: var(--text); font-weight: 600; }
+  .formula-token.k { color: var(--accent-3); }
+  .formula-token.v { color: var(--accent); }
+  .formula-token.h { color: var(--accent-2); }
+  .formula-op { color: var(--text-dim); }
+
+  .card-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0 20px; }
+  .card-row.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 800px) { .card-row, .card-row.three { grid-template-columns: 1fr; } }
+  .mini-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .mini-card h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
+  .mini-card p { font-size: 14px; margin: 0; }
+
+  .callout { padding: 16px 20px; border-radius: 10px; border-left: 4px solid var(--accent); background: rgba(254, 244, 1, 0.05); margin: 18px 0; }
+  .callout.success { border-color: var(--accent-3); background: rgba(74, 222, 128, 0.06); }
+  .callout.warning { border-color: var(--accent-5); background: rgba(248, 113, 113, 0.06); }
+  .callout.amber { border-color: var(--accent-2); background: rgba(212, 202, 0, 0.06); }
+  .callout strong:first-child { display: block; margin-bottom: 4px; color: var(--text); }
+  .callout p:last-child { margin-bottom: 0; }
+
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+  .pill-green { background: rgba(74, 222, 128, 0.12); color: var(--accent-3); }
+  .pill-amber { background: rgba(212, 202, 0, 0.12); color: var(--accent-2); }
+  .pill-red { background: rgba(248, 113, 113, 0.12); color: var(--accent-5); }
+  .pill-yellow { background: rgba(254, 244, 1, 0.12); color: var(--accent); }
+
+  .phase-stack { display: flex; flex-direction: column; gap: 10px; margin: 20px 0 24px; }
+  .phase {
+    display: grid; grid-template-columns: 70px 1fr 240px; align-items: center;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px; transition: transform 0.15s;
+  }
+  .phase:hover { transform: translateX(4px); }
+  .phase-code { font-weight: 800; font-size: 16px; }
+  .phase-name { color: var(--text); font-weight: 600; font-size: 15px; }
+  .phase-name .small { color: var(--text-dim); font-weight: 400; font-size: 13px; display: block; margin-top: 2px; }
+  .phase-stat { color: var(--text-soft); font-size: 13px; text-align: right; font-family: var(--mono); }
+  .phase.p1 { border-left: 4px solid var(--accent-3); } .phase.p1 .phase-code { color: var(--accent-3); }
+  .phase.p2 { border-left: 4px solid var(--accent-3); } .phase.p2 .phase-code { color: var(--accent-3); }
+  .phase.p3 { border-left: 4px solid var(--accent); }   .phase.p3 .phase-code { color: var(--accent); }
+  .phase.p4 { border-left: 4px solid var(--accent); }   .phase.p4 .phase-code { color: var(--accent); }
+  .phase.p5 { border-left: 4px solid var(--accent-2); } .phase.p5 .phase-code { color: var(--accent-2); }
+  .phase.p6 { border-left: 4px solid var(--accent-2); } .phase.p6 .phase-code { color: var(--accent-2); }
+  @media (max-width: 800px) {
+    .phase { grid-template-columns: 60px 1fr; }
+    .phase-stat { grid-column: 1 / -1; text-align: left; padding-left: 60px; }
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+  th { background: var(--bg-elevated); color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  tr:hover td { background: rgba(254, 244, 1, 0.04); }
+  td code { font-size: 12px; }
+
+  .diagram { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; margin: 24px 0; overflow-x: auto; }
+  .diagram pre { background: none; border: none; margin: 0; padding: 0; color: var(--text-soft); }
+  .diagram-caption { color: var(--text-dim); font-size: 13px; text-align: center; margin-top: 14px; font-style: italic; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 24px 0 30px; }
+  @media (max-width: 800px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .stat .n { font-size: 30px; font-weight: 700; color: var(--accent); line-height: 1; letter-spacing: -0.02em; }
+  .stat .l { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  .sources { border-top: 1px solid var(--border); margin-top: 56px; padding-top: 22px; font-size: 13px; color: var(--text-dim); }
+  .sources strong { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; }
+</style>
+</head>
+<body>
+
+<button id="sidebar-toggle" aria-label="Mostrar/ocultar índice" type="button">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+
+<div class="layout">
+  <main>
+
+    <section class="hero">
+      <h1>Cómo funciona ChupitBeats<br>Una radio que escribe su propia música</h1>
+      <p class="hero-sub">
+        ChupitBeats no reproduce nada grabado. Cada tema se <strong>compone</strong>, se
+        <strong>escribe como un programa de Strudel</strong> y se <strong>evalúa en vivo</strong> en
+        el navegador. Detrás suena un escenario 3D con estética PlayStation 1 que cambia con
+        la emisora. Este documento explica cómo está montado por dentro: la cadena que va de
+        una etiqueta de ambiente a un patrón sonando, las tres emisoras, el truco del look PS1
+        y las trampas que costó descubrir.
+      </p>
+      <div class="formula">
+        <span class="formula-token k">Ambiente + diales</span>
+        <span class="formula-op">→</span>
+        <span class="formula-token h">Ficha de tema</span>
+        <span class="formula-op">→</span>
+        <span class="formula-token v">Código Strudel</span>
+        <span class="formula-op">→</span>
+        <span class="formula-token">Audio</span>
+      </div>
+    </section>
+
+    <div class="stat-row">
+      <div class="stat"><div class="n">3.043</div><div class="l">líneas de TypeScript, CSS y HTML</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">dependencias de producción</div></div>
+      <div class="stat"><div class="n">3</div><div class="l">emisoras, cada una con su escenario</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">samples de melodía: todo sintetizado</div></div>
+    </div>
+
+    <!-- 01 -->
+    <section id="idea">
+      <h2><span class="section-num">01</span>La idea: música como código, no como fichero</h2>
+      <p>
+        Una radio normal tiene una lista de canciones. ChupitBeats tiene un
+        <strong>compositor</strong>. Cuando pulsas play, el programa inventa una tonalidad, una
+        progresión de acordes, un motivo melódico y un patrón de batería; después traduce todo
+        eso a un <strong>programa de Strudel</strong> —texto, código de verdad— y se lo da al
+        motor para que lo ejecute.
+      </p>
+      <p>
+        La consecuencia interesante es que <em>el resultado es legible</em>. El panel "Código"
+        de la interfaz no es una decoración: es literalmente el tema que está sonando. Puedes
+        editarlo, pulsar <code>Ctrl+Enter</code> y la radio obedece tu versión al instante.
+      </p>
+      <blockquote>
+        El proyecto nació como recreación de <a href="https://k-lofi.vercel.app" target="_blank" rel="noopener">k-lofi.vercel.app</a>.
+        Al abrir su bundle resultó que <strong>aquel no usa Strudel</strong>: es un planificador
+        propio sobre WebAudio con voces sintetizadas a mano. ChupitBeats mantiene la idea
+        (radio lofi generativa, sin samples de melodía) pero la expresa en Strudel, y de ahí
+        sale el panel de live coding que el original no tiene.
+      </blockquote>
+    </section>
+
+    <!-- 02 -->
+    <section id="motor">
+      <h2><span class="section-num">02</span>El motor: Strudel</h2>
+      <p>
+        <a href="https://strudel.cc" target="_blank" rel="noopener">Strudel</a> es el puerto a
+        JavaScript de <strong>TidalCycles</strong>, el lenguaje de patrones para live coding
+        musical. Su unidad no es la nota sino el <em>ciclo</em>: describes qué pasa dentro de un
+        compás y el motor lo repite, lo subdivide y lo combina.
+      </p>
+      <pre><code>$: s("[bd &lt;hh oh&gt;]*2").bank("tr909").dec(.4)</code></pre>
+      <p>
+        Esa línea significa: dos veces por ciclo, un bombo y —alternando en cada
+        repetición— un charles cerrado o abierto, con los sonidos de una TR-909 y decaimiento
+        corto. ChupitBeats genera líneas así, pero calculadas.
+      </p>
+
+      <h3>Por qué generar texto y no construir objetos</h3>
+      <p>
+        Strudel expone una API de JavaScript con la que se pueden construir patrones
+        programáticamente. Aquí se eligió lo contrario: <strong>generar código como
+        cadena</strong> y pasarlo por <code>evaluate()</code>. Cuesta un poco más de cuidado,
+        pero da tres cosas que la API no da:
+      </p>
+      <div class="card-row three">
+        <div class="mini-card">
+          <h4>Transparencia</h4>
+          <p>Lo que suena se puede leer. No hay una capa intermedia que traducir mentalmente.</p>
+        </div>
+        <div class="mini-card">
+          <h4>Edición en vivo</h4>
+          <p>El oyente puede reescribir el tema sobre la marcha. Es una radio y un editor a la vez.</p>
+        </div>
+        <div class="mini-card">
+          <h4>El DJ escribe igual</h4>
+          <p>Cuando compone la IA, produce exactamente el mismo artefacto: un programa de Strudel.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 -->
+    <section id="cadena">
+      <h2><span class="section-num">03</span>La cadena completa, paso a paso</h2>
+      <p>Seis piezas, cada una con una responsabilidad y un fichero:</p>
+
+      <div class="phase-stack">
+        <div class="phase p1">
+          <div class="phase-code">01</div>
+          <div class="phase-name">Perfil de ambiente
+            <span class="small">Las etiquetas (lluvia, acogedor, onírico…) empujan parámetros numéricos</span>
+          </div>
+          <div class="phase-stat">composer.ts · moodProfile()</div>
+        </div>
+        <div class="phase p2">
+          <div class="phase-code">02</div>
+          <div class="phase-name">Ficha del tema
+            <span class="small">Tonalidad, progresión, motivo, patrón de bombo, caja de ritmos, compases</span>
+          </div>
+          <div class="phase-stat">composer.ts · makeSong()</div>
+        </div>
+        <div class="phase p3">
+          <div class="phase-code">03</div>
+          <div class="phase-name">Traducción a Strudel
+            <span class="small">La ficha se convierte en el texto del programa, capa por capa</span>
+          </div>
+          <div class="phase-stat">strudelize.ts · strudelize()</div>
+        </div>
+        <div class="phase p4">
+          <div class="phase-code">04</div>
+          <div class="phase-name">Evaluación y antena
+            <span class="small">evaluate(), encadenado de temas y silencio entre cortes</span>
+          </div>
+          <div class="phase-stat">radio.ts · Radio</div>
+        </div>
+        <div class="phase p5">
+          <div class="phase-code">05</div>
+          <div class="phase-name">Ambientación
+            <span class="small">Lluvia y crujido de vinilo, fuera de Strudel, en WebAudio puro</span>
+          </div>
+          <div class="phase-stat">ambience.ts · Ambience</div>
+        </div>
+        <div class="phase p6">
+          <div class="phase-code">06</div>
+          <div class="phase-name">Imagen reactiva
+            <span class="small">Escenario 3D y visualizador leen el analizador del audio</span>
+          </div>
+          <div class="phase-stat">scene.ts · viz.ts</div>
+        </div>
+      </div>
+
+      <h3>Paso 1 — De etiquetas a números</h3>
+      <p>
+        Los seis chips de ambiente no son decorativos: cada uno desplaza un perfil. "Onírico"
+        sube el eco y la reverb y baja el sesgo menor; "somnoliento" baja la densidad melódica,
+        la energía de la batería y el brillo; "concentrado" hace lo contrario con la batería.
+        Se pueden combinar, y sus efectos se suman.
+      </p>
+      <pre><code>case 'onírico':
+  p.echo += 0.22; p.reverb += 0.12; p.minorBias -= 0.25
+  p.brightness += 150; w.arpegio += 0.3
+  break</code></pre>
+
+      <h3>Paso 2 — La ficha del tema</h3>
+      <p>
+        Con ese perfil se sortea un tema concreto. La tonalidad sale de un rango MIDI, el modo
+        (mayor o menor) se decide con el sesgo acumulado, y la progresión se elige de un
+        repertorio de <strong>cuatro progresiones menores y tres mayores</strong> con acordes de
+        séptima y novena — el vocabulario del jazz que sostiene el lofi.
+      </p>
+      <table>
+        <tr><th>Campo</th><th>Qué es</th><th>Ejemplo</th></tr>
+        <tr><td><code>keyRoot</code></td><td>Tónica en nota MIDI</td><td><code>45–51</code></td></tr>
+        <tr><td><code>prog</code></td><td>Cuatro acordes: grado en semitonos + cualidad</td><td><code>[[0,'m9'],[5,'m7'],[10,'7'],[3,'maj7']]</code></td></tr>
+        <tr><td><code>motif</code></td><td>Ocho corcheas sobre la pentatónica, con silencios</td><td><code>{deg, oct, rest}</code> ×8</td></tr>
+        <tr><td><code>kicks</code></td><td>Índices de semicorchea donde entra el bombo</td><td><code>[0, 6, 10, 13]</code></td></tr>
+        <tr><td><code>bank</code></td><td>Caja de ritmos</td><td><code>RolandTR808</code></td></tr>
+        <tr><td><code>bars</code></td><td>Duración del tema en compases</td><td><code>24–64</code></td></tr>
+      </table>
+
+      <h3>Paso 3 — La traducción</h3>
+      <p>
+        <code>strudelize.ts</code> convierte la ficha en texto. Los acordes se calculan como
+        <em>voicings</em> sin fundamental (la lleva el bajo) plegados al registro medio, y se
+        escriben como nombres de nota. La rejilla de 16 semicorcheas se imprime en
+        mini-notación, agrupada de cuatro en cuatro para que se lea como un compás.
+      </p>
+      <pre><code>// ✳ ChupitBeats — «cristal a las 3am»
+// LOFI · lluvia + acogedor · 74 bpm · BB menor · 24 compases
+
+setcpm(74/4)
+
+// acordes
+$: note("&lt;[db4,f4,ab4] [bb3,db4,eb4,f4,gb4] [c4,f4,ab4]&gt;")
+  .struct("x ~ ~ ~  ~ ~ ~ ~  ~ ~ x ~  ~ ~ ~ ~")
+  .sound("sine")
+  .attack(.012).decay(.34).sustain(0.22).release(0.7)
+  .lpf(2465).lpq(1.6)
+  .vib(.4).vibmod(0.037)
+  .room(0.27).roomsize(2.6)
+  .gain(.48).pan(.44)
+  .analyze(1)</code></pre>
+      <div class="callout">
+        <strong>El detalle del tempo</strong>
+        <p>
+          Strudel piensa en ciclos por minuto, no en pulsos. Como un ciclo equivale a un compás
+          de cuatro negras, la conversión es <code>setcpm(bpm/4)</code>. De ahí sale también la
+          duración del tema: <code>compases × (60/bpm) × 4</code> segundos.
+        </p>
+      </div>
+
+      <h3>Paso 4 — La antena</h3>
+      <p>
+        <code>radio.ts</code> mantiene el hilo de la emisión. Evalúa el programa, calcula
+        cuánto dura, y programa el corte: al terminar llama a <code>hush()</code>, deja
+        <strong>2,2 segundos de silencio</strong> —el respiro entre cortes de una emisora de
+        verdad— y compone el siguiente. Cambiar de emisora o pulsar "Otra toma" adelanta ese
+        ciclo sin romper el reloj.
+      </p>
+    </section>
+
+    <!-- 04 -->
+    <section id="emisoras">
+      <h2><span class="section-num">04</span>Las tres emisoras</h2>
+      <p>
+        El mismo material armónico se escribe de tres formas distintas. No es un filtro sobre
+        el mismo patrón: cada género genera <strong>capas diferentes</strong>.
+      </p>
+      <table>
+        <tr><th>Emisora</th><th>Tempo</th><th>Escenario</th><th>Capas que escribe</th></tr>
+        <tr>
+          <td><span class="pill pill-green">LOFI</span></td>
+          <td>60–92 · 74</td>
+          <td>Habitación de estudio</td>
+          <td>Acordes de piano eléctrico, bajo escaso, melodía pentatónica, batería con swing</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-yellow">HOUSE</span></td>
+          <td>112–132 · 124</td>
+          <td>Playa al atardecer</td>
+          <td>Bombo a negras, palmas al 2 y 4, charles a contratiempo, bajo de corcheas, stabs</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-red">SCHRANZ</span></td>
+          <td>140–172 · 152</td>
+          <td>Callejón pintado</td>
+          <td>Bombo distorsionado, percusión rodante, línea ácida, drone grave</td>
+        </tr>
+      </table>
+
+      <h3>El acompañamiento del lofi</h3>
+      <p>
+        Sólo la emisora lofi tiene <em>estilos</em> de acompañamiento, sorteados con pesos que
+        las etiquetas de ambiente modifican: <strong>clásico</strong> (el acorde entero al
+        principio del compás), <strong>balada</strong> (notas sostenidas, caja sustituida por
+        aro), <strong>comping</strong> (respuestas sincopadas) y <strong>arpegio</strong>.
+      </p>
+
+      <h3>La línea ácida del schranz</h3>
+      <p>
+        El acid no se escribe nota a nota: se deja que una señal continua barra el filtro. El
+        corte va modulado por ruido de Perlin lento y la resonancia sube con el dial de textura.
+      </p>
+      <pre><code>.lpf(perlin.range(280, 4200).slow(11)).lpq(18)
+.shape(0.5)</code></pre>
+    </section>
+
+    <!-- 05 -->
+    <section id="ambiente">
+      <h2><span class="section-num">05</span>Lo que deliberadamente no es Strudel</h2>
+      <p>
+        La lluvia y el crujido de vinilo <strong>no</strong> son patrones. Son texturas
+        continuas, y meterlas en un motor de eventos rítmicos sería forzar la herramienta. Viven
+        en <code>ambience.ts</code>, en WebAudio puro, colgadas del mismo
+        <code>AudioContext</code> que usa Strudel — con lo que comparten reloj y salida.
+      </p>
+      <div class="card-row">
+        <div class="mini-card">
+          <h4>Lluvia</h4>
+          <p>Dos capas de ruido: una manta grave con paso bajo a 900 Hz y una banda de gotas en
+          3.100 Hz, más un LFO a 0,07 Hz que hace respirar al chaparrón.</p>
+        </div>
+        <div class="mini-card">
+          <h4>Vinilo</h4>
+          <p>Un búfer generado con ruido muy bajo y chasquidos esporádicos (probabilidad 0,0011
+          por muestra), filtrado en banda a 2.400 Hz.</p>
+        </div>
+      </div>
+      <p>
+        El dial de ambiente los sube y baja, pero atenuado según la emisora: en la playa suena a
+        la mitad y en la nave industrial a un cuarto, porque allí la calle pinta menos.
+      </p>
+    </section>
+
+    <!-- 06 -->
+    <section id="ps1">
+      <h2><span class="section-num">06</span>El look PlayStation 1: cuatro trucos, cero modelos</h2>
+      <p>
+        Los escenarios no usan modelos importados: son cajas, planos y cilindros. La estética no
+        viene de la geometría sino del <em>pipeline</em>.
+      </p>
+
+      <div class="phase-stack">
+        <div class="phase p1">
+          <div class="phase-code">01</div>
+          <div class="phase-name">Render a 320×180
+            <span class="small">Se dibuja a resolución de consola y se escala con filtro nearest</span>
+          </div>
+          <div class="phase-stat">WebGLRenderTarget</div>
+        </div>
+        <div class="phase p2">
+          <div class="phase-code">02</div>
+          <div class="phase-name">Temblor de vértices
+            <span class="small">Los vértices se ajustan a una rejilla en espacio de recorte</span>
+          </div>
+          <div class="phase-stat">onBeforeCompile</div>
+        </div>
+        <div class="phase p3">
+          <div class="phase-code">03</div>
+          <div class="phase-name">Iluminación plana
+            <span class="small">MeshLambert y texturas de canvas sin filtrar ni mipmaps</span>
+          </div>
+          <div class="phase-stat">NearestFilter</div>
+        </div>
+        <div class="phase p4">
+          <div class="phase-code">04</div>
+          <div class="phase-name">Pasada final
+            <span class="small">Ojo de pez, aberración cromática, color de 15 bits, grano y viñeta</span>
+          </div>
+          <div class="phase-stat">ShaderMaterial</div>
+        </div>
+      </div>
+
+      <p>
+        El truco número dos es el que más carácter aporta. La PS1 no tenía coma flotante en la
+        transformación de vértices, así que las cosas <em>vibraban</em>. Se reproduce inyectando
+        tres líneas en el shader de cualquier material:
+      </p>
+      <pre><code>vec2 grid = vec2(uJitter, uJitter * 0.5625);
+gl_Position.xy = floor(gl_Position.xy / gl_Position.w * grid)
+                 / grid * gl_Position.w;</code></pre>
+
+      <p>Y la cuantización de color a 15 bits, en la pasada final, es una sola línea:</p>
+      <pre><code>c = floor(c * 32.0) / 32.0;   // 32 niveles por canal</code></pre>
+
+      <div class="callout amber">
+        <strong>El ojo de pez</strong>
+        <p>
+          Es distorsión de barril sobre las UV, y no es fija: <em>se abre con la energía de la
+          música</em>. En schranz llega casi al doble que en lofi, junto con el temblor de
+          cámara. La imagen se pone nerviosa cuando la música lo hace.
+        </p>
+      </div>
+    </section>
+
+    <!-- 07 -->
+    <section id="escenarios">
+      <h2><span class="section-num">07</span>Los escenarios, y Claudy</h2>
+      <p>
+        Cada emisora tiene su escena. Se construyen <strong>la primera vez que se piden</strong>
+        y se guardan, así que cambiar de emisora en caliente es instantáneo.
+      </p>
+
+      <div class="card-row three">
+        <div class="mini-card">
+          <h4>Habitación · lofi</h4>
+          <p>Ventana con lluvia instanciada, ciudad al fondo con ventanas que se apagan,
+          escritorio, portátil que late con la música, gato en el alféizar y guirnalda.</p>
+        </div>
+        <div class="mini-card">
+          <h4>Playa · house</h4>
+          <p>Cielo de atardecer con degradado por shader, mar de malla animada con normales
+          recalculadas, hoguera, torres de altavoces que respiran y espuma que va y viene.</p>
+        </div>
+        <div class="mini-card">
+          <h4>Callejón · schranz</h4>
+          <p>Muros con grafitis <em>generados en canvas</em>, contenedores pintados, valla,
+          escalera de incendios, aire acondicionado con ventilador y carteles que parpadean.</p>
+        </div>
+      </div>
+
+      <h3>Grafitis dibujados en tiempo de ejecución</h3>
+      <p>
+        No hay ni una textura descargada. Los muros se pintan con <code>&lt;canvas&gt;</code>:
+        primero hormigón moteado, encima <em>throw-ups</em> (burbujas con contorno y
+        chorretones), después tags —garabatos hechos con curvas cuadráticas y una rúbrica final
+        hacia arriba— y pegatinas giradas al azar. Cada muro es distinto en cada carga.
+      </p>
+
+      <h3>Claudy</h3>
+      <p>
+        La mascota aparece en los tres escenarios: cuerpo naranja, dos orejillas, dos ojos
+        oscuros y cuatro patas. Flota, gira despacio y <strong>patalea con la energía del
+        audio</strong>. En el callejón lleva además un bote de espray que suelta pintura al
+        ritmo.
+      </p>
+
+      <h3>Cómo la imagen escucha</h3>
+      <p>
+        Cada capa del programa Strudel termina en <code>.analyze(1)</code>, que engancha un
+        analizador compartido. La interfaz lo lee con
+        <code>getAnalyzerData('frequency', 1)</code>, y de ahí salen dos cosas: las 20 barras del
+        visualizador —lo único con color en toda la consola— y una energía media suavizada que
+        mueve la escena.
+      </p>
+      <div class="diagram">
+<pre>  patrones Strudel ──► analizador ──► getAnalyzerData()
+                                          │
+                        ┌─────────────────┴─────────────────┐
+                        ▼                                   ▼
+                 20 barras del viz               energía media suavizada
+                                                            │
+                        ┌───────────────┬───────────────────┤
+                        ▼               ▼                   ▼
+                  temblor de       ojo de pez y        luces, Claudy,
+                    cámara         aberración         oleaje, ventilador</pre>
+        <div class="diagram-caption">Del audio a la imagen: una sola señal alimenta todo lo que se mueve</div>
+      </div>
+    </section>
+
+    <!-- 08 -->
+    <section id="dj">
+      <h2><span class="section-num">08</span>El DJ: cuando escribe la IA</h2>
+      <p>
+        El botón "Componer con IA" llama a <code>/api/dj</code>, una función serverless que pide
+        a un modelo <strong>el programa de Strudel completo</strong> —no una descripción, no
+        parámetros: el código— junto con un título y una frase de presentación.
+      </p>
+      <p>
+        El prompt del sistema le enseña las reglas del motor: qué sonidos existen, qué efectos
+        son válidos, que cada capa debe terminar en <code>.analyze(1)</code> y cómo suena cada
+        emisora. La respuesta viene forzada a un esquema JSON.
+      </p>
+
+      <table>
+        <tr><th>Variable de entorno</th><th>Proveedor</th><th>Modelo por defecto</th><th>Se cambia con</th></tr>
+        <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Claude</td><td><code>claude-opus-5</code></td><td>—</td></tr>
+        <tr><td><code>XAI_API_KEY</code></td><td>Grok</td><td><code>grok-4.6</code></td><td><code>XAI_MODEL</code></td></tr>
+        <tr><td><code>GEMINI_API_KEY</code></td><td>Gemini</td><td><code>gemini-3.7-flash</code></td><td><code>GEMINI_MODEL</code></td></tr>
+      </table>
+
+      <p>
+        xAI y Gemini exponen endpoints <strong>compatibles con OpenAI</strong>, así que comparten
+        un único <code>fetch</code> parametrizado por URL, clave y modelo. Claude va por su SDK
+        oficial. Y hay dos capas de resistencia:
+      </p>
+      <div class="card-row">
+        <div class="mini-card">
+          <h4>Cadena de proveedores</h4>
+          <p>Se recorren todos los que tengan clave. Si uno falla por saldo o credenciales, se
+          prueba el siguiente. Una variable olvidada en el entorno ya no deja la radio sin DJ.</p>
+        </div>
+        <div class="mini-card">
+          <h4>Reintento sin esquema</h4>
+          <p>Si la capa de structured outputs falla, se repite pidiendo JSON a secas con la forma
+          descrita en el prompt. Un parser tolerante desenvuelve incluso el JSON en bloque markdown.</p>
+        </div>
+      </div>
+      <div class="callout success">
+        <strong>Sin clave también funciona</strong>
+        <p>
+          El DJ es un extra. Sin ninguna variable configurada la radio sigue emitiendo: el
+          compositor local escribe los temas y el botón devuelve un aviso legible.
+        </p>
+      </div>
+    </section>
+
+    <!-- 09 -->
+    <section id="stack">
+      <h2><span class="section-num">09</span>Stack y estructura</h2>
+      <p>
+        Tres dependencias de producción. Sin framework de interfaz: la consola es HTML y
+        TypeScript a pelo, porque su estado cabe en un objeto y no justifica React.
+      </p>
+      <table>
+        <tr><th>Pieza</th><th>Versión</th><th>Para qué</th></tr>
+        <tr><td><code>@strudel/web</code></td><td>1.3.0</td><td>Motor de patrones y síntesis (incluye superdough)</td></tr>
+        <tr><td><code>three</code></td><td>0.184.0</td><td>Los tres escenarios y la pasada de post-proceso</td></tr>
+        <tr><td><code>@anthropic-ai/sdk</code></td><td>0.75.0</td><td>El DJ cuando el proveedor es Claude</td></tr>
+        <tr><td><code>vite</code></td><td>7.3.6</td><td>Servidor de desarrollo y empaquetado</td></tr>
+        <tr><td><code>typescript</code></td><td>5.9.3</td><td>Modo estricto, incluido el endpoint</td></tr>
+        <tr><td><code>playwright</code></td><td>—</td><td><code>snap.mjs</code>: capturas y detección de errores</td></tr>
+      </table>
+
+      <h3>Ficheros</h3>
+      <table>
+        <tr><th>Fichero</th><th>Líneas</th><th>Responsabilidad</th></tr>
+        <tr><td><code>src/scene.ts</code></td><td>1.022</td><td>Los tres escenarios, Claudy, texturas y post-proceso</td></tr>
+        <tr><td><code>src/strudelize.ts</code></td><td>383</td><td>Ficha de tema → programa de Strudel</td></tr>
+        <tr><td><code>api/dj.ts</code></td><td>333</td><td>Endpoint del DJ, tres proveedores</td></tr>
+        <tr><td><code>src/composer.ts</code></td><td>293</td><td>Ambientes, géneros, teoría musical</td></tr>
+        <tr><td><code>src/main.ts</code></td><td>239</td><td>Cableado de la consola</td></tr>
+        <tr><td><code>src/style.css</code></td><td>238</td><td>Interfaz sobria, gris sobre gris</td></tr>
+        <tr><td><code>src/radio.ts</code></td><td>212</td><td>Emisión: evaluar, encadenar, analizar</td></tr>
+        <tr><td><code>src/ambience.ts</code></td><td>113</td><td>Lluvia y vinilo en WebAudio</td></tr>
+        <tr><td><code>src/viz.ts</code></td><td>61</td><td>Las 20 barras del espectro</td></tr>
+      </table>
+
+      <h3>Decisión de diseño de la interfaz</h3>
+      <p>
+        La consola es deliberadamente neutra: grises, bordes de un píxel, tipografía de sistema,
+        sin rotaciones ni sombras duras. <strong>El único elemento con color es el
+        visualizador</strong>. Todo lo demás cede el protagonismo al escenario 3D.
+      </p>
+    </section>
+
+    <!-- 10 -->
+    <section id="trampas">
+      <h2><span class="section-num">10</span>Cinco trampas que costó descubrir</h2>
+      <p>
+        Ninguna de estas aparece en la documentación con un cartel luminoso. Todas costaron una
+        sesión de depuración.
+      </p>
+
+      <h4>1 · <code>initStrudel()</code> no carga los worklets</h4>
+      <p>
+        Inicializar Strudel no basta: los <em>AudioWorklets</em> de superdough se cargan aparte.
+        Sin <code>await initAudio()</code> después, efectos como <code>.coarse()</code> o
+        <code>.vib()</code> fallan con un error de construcción de nodo que no menciona los
+        worklets por ninguna parte.
+      </p>
+
+      <h4>2 · <code>.arp()</code> toma índices, no nombres de modo</h4>
+      <p>
+        En Strudel 1.3, <code>.arp("up")</code> no arpegia hacia arriba: intenta indexar el
+        acorde con la cadena <code>"up"</code>, obtiene <code>undefined</code> y revienta la
+        consulta. Hay que pasarle números: <code>.arp("0 1 2 3 2 1")</code>.
+      </p>
+
+      <h4>3 · No todas las cajas de ritmos tienen los mismos sonidos</h4>
+      <p>
+        <code>bd</code>, <code>sd</code>, <code>hh</code> y <code>oh</code> existen siempre, pero
+        <code>rim</code> y <code>cp</code> no están en RhythmAce, y <code>rim</code> tampoco en
+        AkaiLinn. Pedir uno que falta deja la capa muda. Un helper elige el primero que esa caja
+        tenga de verdad.
+      </p>
+
+      <h4>4 · Vercel interpreta <code>export default</code> como handler de Node</h4>
+      <p>
+        En la carpeta <code>/api</code>, un <code>export default function(req)</code> se toma
+        como el handler clásico <code>(req, res)</code>, así que <code>req.json()</code> revienta
+        <em>sólo en producción</em> — en local el endpoint ni se ejecuta. La forma correcta es el
+        export por método: <code>export async function POST(req: Request)</code>.
+      </p>
+
+      <h4>5 · Un temporizador de cliente demasiado corto</h4>
+      <p>
+        El abortador del navegador cortaba a los 30 segundos y el error que salía era
+        <em>"signal is aborted without reason"</em>, que parece un fallo del proveedor y no lo
+        es. Los modelos que razonan tardan más que eso en escribir un tema entero.
+      </p>
+
+      <div class="callout warning">
+        <strong>Y una que no es un fallo</strong>
+        <p>
+          Al desplegar, una pestaña abierta desde antes sigue ejecutando el JavaScript viejo
+          mientras sus peticiones van a la función nueva. Da síntomas imposibles: interfaz
+          antigua con errores modernos. Se arregla recargando.
+        </p>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section id="trabajar">
+      <h2><span class="section-num">11</span>Trabajar con el proyecto</h2>
+      <pre><code>npm install
+npm run dev        # servidor de desarrollo
+npm run build      # tsc + comprobación de api/ + empaquetado
+npm run snap       # captura y auditoría con Playwright</code></pre>
+
+      <h3>El script de captura</h3>
+      <p>
+        <code>snap.mjs</code> es la herramienta de iteración visual: abre la página, elige
+        emisora, pulsa play, encadena temas y <strong>reporta cualquier error de consola</strong>.
+        Es lo que detecta cuando un patrón generado no compila o falta un sonido.
+      </p>
+      <pre><code>URL=http://localhost:5173/ GENRE=schranz RETUNES=2 npm run snap</code></pre>
+
+      <h3>Despliegue</h3>
+      <p>
+        El proyecto está en la raíz del repositorio, así que Vercel detecta Vite sin
+        configuración. La única variable necesaria es la clave del proveedor de IA, y sólo para
+        el botón del DJ.
+      </p>
+      <div class="callout">
+        <strong>Cambiar una variable no basta</strong>
+        <p>
+          Vercel congela las variables de entorno en el despliegue. Después de añadir o borrar
+          una hay que <em>redesplegar</em> para que la función la vea.
+        </p>
+      </div>
+    </section>
+
+    <section id="fuentes" class="sources">
+      <strong>Referencias</strong>
+      <p style="margin-top:10px">
+        <a href="https://strudel.cc" target="_blank" rel="noopener">strudel.cc</a> — motor de patrones (AGPL-3.0) ·
+        <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> — render 3D ·
+        <a href="https://k-lofi.vercel.app" target="_blank" rel="noopener">k-lofi.vercel.app</a> de Kevin T. Ngo — el punto de partida ·
+        <a href="https://github.com/SrAlvarado/chupits-discovery" target="_blank" rel="noopener">chupits-discovery</a> — archivo del ChupitBeats anterior
+      </p>
+    </section>
+
+  </main>
+
+  <aside>
+    <div class="sidebar-inner">
+      <div class="sidebar-head">
+        <div class="brand">ChupitBeats</div>
+        <div class="sidebar-tags">
+          <span class="doc-tag doc-tag-default">Strudel</span>
+          <span class="doc-tag doc-tag-purple">three.js</span>
+          <span class="doc-tag doc-tag-purple">TypeScript</span>
+          <span class="doc-tag doc-tag-purple">Vercel</span>
+        </div>
+      </div>
+      <nav>
+        <ol>
+          <li><a href="#idea">La idea</a></li>
+          <li><a href="#motor">El motor: Strudel</a></li>
+          <li><a href="#cadena">La cadena completa</a></li>
+          <li><a href="#emisoras">Las tres emisoras</a></li>
+          <li><a href="#ambiente">Lo que no es Strudel</a></li>
+          <li><a href="#ps1">El look PlayStation 1</a></li>
+          <li><a href="#escenarios">Escenarios y Claudy</a></li>
+          <li><a href="#dj">El DJ: cuando escribe la IA</a></li>
+          <li><a href="#stack">Stack y estructura</a></li>
+          <li><a href="#trampas">Cinco trampas</a></li>
+          <li><a href="#trabajar">Trabajar con el proyecto</a></li>
+          <li><a href="#fuentes">Referencias</a></li>
+        </ol>
+      </nav>
+    </div>
+  </aside>
+</div>
+
+<script>
+  const tracked = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('nav a');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        navLinks.forEach(link => {
+          link.style.background = '';
+          link.style.color = '';
+          if (link.getAttribute('href') === '#' + id) {
+            link.style.background = 'var(--bg-elevated)';
+            link.style.color = 'var(--accent)';
+          }
+        });
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  tracked.forEach(s => observer.observe(s));
+
+  document.getElementById('sidebar-toggle').addEventListener('click', () => {
+    document.body.classList.toggle('sidebar-hidden');
+  });
+</script>
+
+</body>
+</html>
